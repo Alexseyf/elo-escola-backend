@@ -388,4 +388,47 @@ router.delete("/soft/:id", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (
   }
 })
 
+router.get("/relatorios/mensalidades-por-turma", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
+  try {
+    const turmasComMensalidades = await prisma.turma.findMany({
+      include: {
+        alunos: {
+          where: {
+            isAtivo: true
+          },
+          select: {
+            id: true,
+            nome: true,
+            mensalidade: true
+          }
+        }
+      }
+    })
+
+    const resultado = turmasComMensalidades.map(turma => {
+      const totalMensalidade = turma.alunos.reduce((total, aluno) => {
+        return total + (aluno.mensalidade || 0)
+      }, 0)
+
+      return {
+        turmaId: turma.id,
+        turmaNome: turma.nome,
+        quantidadeAlunos: turma.alunos.length,
+        totalMensalidade,
+        alunos: turma.alunos
+      }
+    })
+
+    const totalGeral = resultado.reduce((total, turma) => total + turma.totalMensalidade, 0)
+
+    res.status(200).json({
+      turmas: resultado,
+      totalGeral
+    })
+  } catch (error) {
+    console.error("Erro ao buscar mensalidades por turma:", error)
+    res.status(500).json({ erro: "Erro ao buscar mensalidades por turma", detalhes: error })
+  }
+})
+
 export default router
