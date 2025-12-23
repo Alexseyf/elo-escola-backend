@@ -1,331 +1,112 @@
-import { PrismaClient, TIPO_USUARIO, CAMPO_EXPERIENCIA, SEMESTRE } from "@prisma/client"
 import { Router } from "express"
-import { z } from "zod"
-import { checkToken } from "../middlewares/checkToken"
-import { checkRoles } from "../middlewares/checkRoles"
+import { TIPO_USUARIO } from "@prisma/client"
+import { checkToken } from "../src/shared/middlewares/checkToken"
+import { checkRoles } from "../src/shared/middlewares/checkRoles"
+import { createActivitySchema } from "../schemas/activity.schema"
+import { ActivityService } from "../services/activityService"
 
-const prisma = new PrismaClient()
 const router = Router()
 
-const atividadeSchema = z.object({
-  ano: z.number().int().positive(),
-  periodo: z.nativeEnum(SEMESTRE),
-  quantHora: z.number().int().positive(),
-  descricao: z.string().min(1).max(500),
-  data: z.string().datetime(),
-  turmaId: z.number().int().positive(),
-  campoExperiencia: z.nativeEnum(CAMPO_EXPERIENCIA),
-  objetivoId: z.number().int().positive(),
-  isAtivo: z.boolean().optional()
-})
-
+// Cria uma nova atividade
 router.post("/", checkToken, checkRoles([TIPO_USUARIO.PROFESSOR]), async (req, res) => {
-  const valida = atividadeSchema.safeParse(req.body)
-  
-  if (!valida.success) {
-    return res.status(400).json({ erro: "Dados inválidos", detalhes: valida.error })
-  }
-
   try {
-    const professor = await prisma.usuario.findUnique({
-      where: { id: req.user?.id },
-      include: {
-        roles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    })
+    const schoolId = req.schoolId
+    const professorId = req.userLogadoId
 
-    if (!professor) {
-      return res.status(404).json({ erro: "Professor não encontrado" })
+    if (!schoolId) return res.status(400).json({ erro: "Contexto da escola não identificado" })
+    if (!professorId) return res.status(401).json({ erro: "Usuário não identificado" })
+
+    const valida = createActivitySchema.safeParse(req.body)
+    if (!valida.success) {
+      return res.status(400).json({ erro: "Dados inválidos", detalhes: valida.error })
     }
 
-    const isProfessor = professor.roles.some(ur => ur.role.tipo === "PROFESSOR")
-    if (!isProfessor) {
-      return res.status(403).json({ erro: "Acesso negado. Apenas professores podem cadastrar atividades" })
-    }
-
-    const turma = await prisma.turma.findUnique({
-      where: { id: valida.data.turmaId }
-    })
-
-    if (!turma) {
-      return res.status(404).json({ erro: "Turma não encontrada" })
-    }
-
-    const objetivo = await prisma.objetivo.findUnique({
-      where: { id: valida.data.objetivoId }
-    })
-
-    if (!objetivo) {
-      return res.status(404).json({ erro: "Objetivo não encontrado" })
-    }
-
-    let dataLocal;
-    if (typeof valida.data.data === 'string' && valida.data.data.length === 10) {
-      const [ano, mes, dia] = valida.data.data.split('-').map(Number);
-      dataLocal = new Date(Date.UTC(ano, mes - 1, dia, 3, 0, 0));
-    } else {
-      dataLocal = new Date(valida.data.data);
-    }
-
-    const atividade = await prisma.atividade.create({
-      data: {
-        ...valida.data,
-        data: dataLocal,
-        professorId: req.user!.id,
-        isAtivo: valida.data.isAtivo !== undefined ? valida.data.isAtivo : true
-      },
-      include: {
-        professor: {
-          select: {
-            id: true,
-            nome: true,
-            email: true
-          }
-        },
-        turma: {
-          select: {
-            id: true,
-            nome: true
-          }
-        },
-        objetivo: {
-          select: {
-            id: true,
-            codigo: true,
-            descricao: true
-          }
-        }
-      }
-    })
+    const service = new ActivityService(schoolId)
+    const atividade = await service.create(valida.data, professorId)
 
     return res.status(201).json({
       mensagem: "Atividade cadastrada com sucesso",
       atividade
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao cadastrar atividade:", error)
     return res.status(500).json({
       erro: "Erro ao cadastrar atividade",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido"
+      detalhes: error.message || "Erro desconhecido"
     })
   }
 })
 
+// Lista todas as atividades (Admin)
 router.get("/", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
   try {
-    const atividades = await prisma.atividade.findMany({
-      select: {
-        id: true,
-        ano: true,
-        periodo: true,
-        quantHora: true,
-        data: true,
-        campoExperiencia: true,
-        turma: {
-          select: {
-            id: true,
-            nome: true
-          }
-        }
-      },
-      orderBy: {
-        data: 'desc'
-      }
-    })
+    const schoolId = req.schoolId
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+    const service = new ActivityService(schoolId)
+    const result = await service.findAll()
 
     return res.status(200).json({
-      total: atividades.length,
-      atividades
+      total: result.length,
+      atividades: result
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao listar atividades:", error)
-    return res.status(500).json({
-      erro: "Erro ao listar atividades",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido"
-    })
+    return res.status(500).json({ erro: "Erro ao listar atividades", detalhes: error.message })
   }
 })
 
+// Gera um relatório com a contagem de atividades por campo de experiência
 router.get("/relatorio/campo-experiencia", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  try {
-    const atividadesPorCampo = await prisma.atividade.groupBy({
-      by: ['campoExperiencia'],
-      _count: {
-        id: true
-      },
-      orderBy: {
-        _count: {
-          id: 'desc'
-        }
-      }
-    })
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    const atividadesPorCampoETurma = await prisma.atividade.groupBy({
-      by: ['campoExperiencia', 'turmaId'],
-      _count: {
-        id: true
-      }
-    })
+        const service = new ActivityService(schoolId)
+        const report = await service.getReportByExperienceField()
 
-    const turmas = await prisma.turma.findMany({
-      select: {
-        id: true,
-        nome: true
-      }
-    })
-
-    const turmasMap = turmas.reduce((acc, turma) => {
-      acc[turma.id] = turma.nome
-      return acc
-    }, {} as Record<number, string>)
-    const relatorio = atividadesPorCampo.map(campo => {
-      const detalhesPorTurma = atividadesPorCampoETurma
-        .filter(item => item.campoExperiencia === campo.campoExperiencia)
-        .map(item => ({
-          turmaId: item.turmaId,
-          turma: turmasMap[item.turmaId] || 'Turma não encontrada',
-          total: item._count.id
-        }))
-        .sort((a, b) => b.total - a.total)
-
-      return {
-        campoExperiencia: campo.campoExperiencia,
-        totalGeral: campo._count.id,
-        detalhesPorTurma
-      }
-    })
-
-    return res.status(200).json({
-      resumo: {
-        totalAtividades: atividadesPorCampo.reduce((acc, campo) => acc + campo._count.id, 0),
-        totalCampos: atividadesPorCampo.length
-      },
-      relatorio
-    })
-  } catch (error) {
-    console.error("Erro ao gerar relatório por campo de experiência:", error)
-    return res.status(500).json({
-      erro: "Erro ao gerar relatório por campo de experiência",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido"
-    })
-  }
+        return res.status(200).json(report)
+    } catch (error: any) {
+        return res.status(500).json({ erro: "Erro ao gerar relatório", detalhes: error.message })
+    }
 })
 
+// Busca uma atividade por ID
 router.get("/:id", checkToken, checkRoles([TIPO_USUARIO.ADMIN, TIPO_USUARIO.PROFESSOR]), async (req, res) => {
-  try {
-    const atividadeId = parseInt(req.params.id)
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+        const id = parseInt(req.params.id)
+        if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
 
-    if (isNaN(atividadeId)) {
-      return res.status(400).json({ erro: "ID de atividade inválido" })
+        const service = new ActivityService(schoolId)
+        const atividade = await service.findById(id)
+
+        if (!atividade) return res.status(404).json({ erro: "Atividade não encontrada" })
+
+        return res.status(200).json(atividade)
+    } catch (error: any) {
+        return res.status(500).json({ erro: "Erro ao buscar atividade", detalhes: error.message })
     }
-
-    const atividade = await prisma.atividade.findUnique({
-      where: { id: atividadeId },
-      include: {
-        professor: {
-          select: {
-            id: true,
-            nome: true,
-            email: true,
-            telefone: true
-          }
-        },
-        turma: {
-          select: {
-            id: true,
-            nome: true
-          }
-        },
-        objetivo: {
-          select: {
-            id: true,
-            codigo: true,
-            descricao: true
-          }
-        }
-      }
-    })
-
-    if (!atividade) {
-      return res.status(404).json({ erro: "Atividade não encontrada" })
-    }
-
-    return res.status(200).json(atividade)
-  } catch (error) {
-    console.error("Erro ao buscar atividade:", error)
-    return res.status(500).json({
-      erro: "Erro ao buscar atividade",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido"
-    })
-  }
 })
 
+// Lista as atividades de um professor
 router.get("/turma-atividades/:professorId", checkToken, checkRoles([TIPO_USUARIO.PROFESSOR]), async (req, res) => {
-  try {
-    const professorId = parseInt(req.params.professorId)
-    if (isNaN(professorId)) {
-      return res.status(400).json({ erro: "ID de professor inválido" })
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const professorId = parseInt(req.params.professorId)
+        if (isNaN(professorId)) return res.status(400).json({ erro: "ID de professor inválido" })
+
+        const service = new ActivityService(schoolId)
+        const result = await service.findByProfessor(professorId)
+
+        return res.status(200).json(result)
+    } catch (error: any) {
+        return res.status(500).json({ erro: "Erro ao buscar atividades", detalhes: error.message })
     }
-
-    const vinculos = await prisma.professorTurma.findMany({
-      where: { usuarioId: professorId },
-      select: { turmaId: true, turma: { select: { id: true, nome: true } } }
-    })
-    const turmaIds = vinculos.map(v => v.turmaId)
-    const turmasRelacionadas = vinculos.map(v => v.turma)
-
-    if (!turmaIds.length) {
-      return res.status(404).json({ erro: "Nenhuma turma relacionada ao professor" })
-    }
-
-    const atividades = await prisma.atividade.findMany({
-      where: {
-        turmaId: { in: turmaIds },
-        professorId
-      },
-      select: {
-        id: true,
-        ano: true,
-        periodo: true,
-        quantHora: true,
-        data: true,
-        campoExperiencia: true,
-        turma: {
-          select: {
-            id: true,
-            nome: true
-          }
-        },
-        objetivo: {
-          select: {
-            id: true,
-            codigo: true,
-            descricao: true
-          }
-        }
-      },
-      orderBy: { data: 'desc' }
-    })
-
-    if (!atividades.length) {
-      return res.status(404).json({ erro: "Nenhuma atividade encontrada para o professor nas turmas relacionadas" })
-    }
-
-    return res.status(200).json({
-      turmas: turmasRelacionadas,
-      atividades
-    })
-  } catch (error) {
-    console.error("Erro ao buscar atividades da turma do professor:", error)
-    return res.status(500).json({
-      erro: "Erro ao buscar atividades da turma do professor",
-      detalhes: error instanceof Error ? error.message : "Erro desconhecido"
-    })
-  }
 })
 
 export default router
+

@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.schoolsRouter = void 0;
+const express_1 = require("express");
+const school_controller_1 = require("./school.controller");
+const checkRoles_1 = require("../../shared/middlewares/checkRoles");
+const checkToken_1 = require("../../shared/middlewares/checkToken");
+const client_1 = require("@prisma/client");
+const router = (0, express_1.Router)();
+const controller = new school_controller_1.SchoolController();
+router.post('/', checkToken_1.checkToken, (0, checkRoles_1.checkRoles)([client_1.TIPO_USUARIO.PLATFORM_ADMIN]), controller.create.bind(controller));
+exports.schoolsRouter = router;

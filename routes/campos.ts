@@ -1,8 +1,8 @@
 import { PrismaClient, CAMPO_EXPERIENCIA } from "@prisma/client";
 import { Router} from "express";
 import { z} from "zod";
-import { checkToken } from "../middlewares/checkToken";
-import { checkRoles } from "../middlewares/checkRoles";
+import { checkToken } from "../src/shared/middlewares/checkToken";
+import { checkRoles } from "../src/shared/middlewares/checkRoles";
 
 const prisma = new PrismaClient();
 const router = Router();

@@ -4,21 +4,31 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const client_1 = require("@prisma/client");
 const express_1 = require("express");
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const prisma = new client_1.PrismaClient();
+const prisma_1 = require("../config/prisma");
+const tenant_middleware_1 = require("../src/shared/middlewares/tenant.middleware");
 const router = (0, express_1.Router)();
-router.post("/", async (req, res) => {
+router.post("/", tenant_middleware_1.tenantMiddleware, async (req, res) => {
     const { email, senha } = req.body;
+    const schoolId = req.schoolId;
     const msg = "Login ou senha incorretos";
     if (!email || !senha) {
-        res.status(400).json({ erro: msg });
+        res.status(400).json({ erro: "Email e senha são obrigatórios" });
+        return;
+    }
+    if (!schoolId) {
+        res.status(400).json({ erro: "Escola não identificada (Header ou Domínio)" });
         return;
     }
     try {
-        const usuario = await prisma.usuario.findFirst({
-            where: { email },
+        const usuario = await prisma_1.prisma.usuario.findUnique({
+            where: {
+                email_schoolId: {
+                    email: email,
+                    schoolId: schoolId
+                }
+            },
             include: {
                 roles: {
                     include: {
@@ -28,41 +38,41 @@ router.post("/", async (req, res) => {
             }
         });
         if (usuario && bcrypt_1.default.compareSync(senha, usuario.senha)) {
+            if (!usuario.isAtivo) {
+                return res.status(401).json({ erro: "Usuário inativo. Contate a administração." });
+            }
             const roles = usuario.roles.map(ur => ur.role.tipo);
             const token = jsonwebtoken_1.default.sign({
                 userLogadoId: usuario.id,
                 userLogadoNome: usuario.nome,
+                schoolId: usuario.schoolId,
                 roles: roles,
-            }, process.env.JWT_KEY, { expiresIn: "1h" });
-            res.status(200).json({
+            }, process.env.JWT_KEY, { expiresIn: "30d" });
+            const primeiroAcesso = !usuario.senhaAlterada;
+            const resposta = {
                 id: usuario.id,
                 nome: usuario.nome,
                 email: usuario.email,
                 roles: roles,
                 token,
-            });
-            await prisma.log.create({
+                primeiroAcesso,
+            };
+            res.status(200).json(resposta);
+            await prisma_1.prisma.log.create({
                 data: {
                     descricao: "Login Realizado",
                     complemento: `Usuário: ${usuario.email}`,
                     usuarioId: usuario.id,
+                    schoolId: usuario.schoolId
                 },
             });
             return;
         }
-        // if (usuario) {
-        //   await prisma.log.create({
-        //     data: {
-        //       descricao: "Tentativa de Acesso Inválida",
-        //       complemento: `Funcionário: ${usuario.email}`,
-        //       usuarioId: usuario.id,
-        //     },
-        //   })
-        // }
         res.status(400).json({ erro: msg });
     }
     catch (error) {
-        res.status(400).json(error);
+        console.error("Erro no Login:", error);
+        res.status(400).json({ erro: "Erro interno no login" });
     }
 });
 exports.default = router;

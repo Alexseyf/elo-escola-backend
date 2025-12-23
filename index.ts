@@ -18,29 +18,57 @@ import gruposRouter from './routes/grupos'
 import cors from 'cors'
 import swaggerUi from 'swagger-ui-express'
 import swaggerDocs from './swagger.json'
+import { tenantMiddleware } from './src/shared/middlewares/tenant.middleware' // Importa tenant middleware
+import { platformRouter } from './src/modules/platform/platform.routes' // Rotas da plataforma para PLATFORM_ADMIN (não é necessário tenant context)
 
 const app = express()
 const port = 3000
 
-app.use((req, res, next) => {
-  next()
-})
-
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs))
-
+// Adiciona 'x-tenant-id' aos allowedHeaders
 app.use(cors({
-  origin: '*',
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Access-Control-Allow-Origin'], 
-  exposedHeaders: ['Authorization', 'Access-Control-Allow-Origin'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'x-tenant-id',
+  ], 
+  exposedHeaders: ['Authorization'],
+  credentials: true, // Permitir cookies se necessário
 }))
 
 app.use(express.json())
 
-app.use((req, res, next) => {
-  next()
+// O login e a recuperação de senha podem funcionar inicialmente sem o tenant
+// (O tenant pode ser resolvido APÓS o login, com base no schoolId do usuário)
+app.use("/login", routesLogin)
+app.use("/recupera-senha", routesRecuperaSenha)
+app.use("/valida-senha", routesValidaSenha)
+
+
+// Rotas para PLATFORM_ADMIN - exigem autenticação, mas não tenant context
+// Permitem o gerenciamento global da plataforma (criação de escolas, visualização de todos os usuários, etc.)
+app.use("/api/v1/platform", platformRouter)
+
+// Documentação Swagger
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs))
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
+app.get('/', (req, res) => {
+  res.send('API - Escola Educação Infantil')
+})
+
+// Garante que TODAS as rotas protegidas identifiquem o tenant (escola) corretamente
+// Todas as rotas registradas APÓS este middleware exigirão:
+// - Cabeçalho x-tenant-id válido OU
+// - Subdomínio válido que corresponda a um slug da escola
+app.use(tenantMiddleware);
+
+
+// Todas as rotas abaixo deste ponto terão res.locals.schoolId disponível
 app.use("/usuarios", routesUsuarios)
 app.use('/usuarios', usuariosRouter)
 app.use('/turmas', turmasRouter)
@@ -53,17 +81,9 @@ app.use('/eventos', eventosRouter)
 app.use('/atividades', atividadesRouter)
 app.use('/objetivos', objetivosRouter)
 app.use('/grupos', gruposRouter)
-app.use("/login", routesLogin)
-app.use("/recupera-senha", routesRecuperaSenha)
-app.use("/valida-senha", routesValidaSenha)
-app.use("/", routesValidaSenha)
 app.use("/campos", campos)
 
-app.get('/', (req, res) => {
-  res.send('API - Escola Educação Infantil')
-})
-
-
+// Middleware global de tratamento de erros
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err)
   console.error('Stack:', err.stack)
@@ -77,7 +97,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 if (process.env.NODE_ENV !== 'production') {
   app.listen(3000, () => {
-    console.log('Servidor rodando na porta 3000')
+    console.log(`Servidor rodando na porta ${port}`)
   })
 }
 

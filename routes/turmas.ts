@@ -1,187 +1,105 @@
-import { PrismaClient, TURMA, GRUPO_POR_CAMPO } from "@prisma/client"
 import { Router } from "express"
-import { z } from 'zod'
-import { checkToken } from '../middlewares/checkToken'
-import { checkRoles } from "../middlewares/checkRoles"
+import { checkToken } from '../src/shared/middlewares/checkToken'
+import { checkRoles } from "../src/shared/middlewares/checkRoles"
+import { createClassSchema, assignTeacherSchema } from "../schemas/class.schema"
+import { ClassService } from "../services/classService"
 
-const prisma = new PrismaClient()
 const router = Router()
 
-const getTurmaGrupo = async (turma: TURMA): Promise<number> => {
-  const grupoNome = (() => {
-    switch (turma) {
-      case "BERCARIO2":
-        return "BEBES";
-      case "MATERNAL1":
-      case "MATERNAL2":
-        return "CRIANCAS_BEM_PEQUENAS";
-      case "PRE1":
-      case "PRE2":
-        return "CRIANCAS_PEQUENAS";
-      case "TURNOINVERSO":
-        return "CRIANCAS_MAIORES";
-    }
-  })() as GRUPO_POR_CAMPO;
-
-  const grupo = await prisma.grupoPorCampo.findUnique({
-    where: { nome: grupoNome }
-  });
-
-  if (!grupo) {
-    throw new Error(`Grupo ${grupoNome} não encontrado`);
-  }
-
-  return grupo.id;
-}
-
-const turmaSchema = z.object({
-  nome: z.nativeEnum(TURMA)
-})
-
+// Cria uma turma
 router.post("/", checkToken, checkRoles(["ADMIN"]), async (req, res) => {
-  const valida = turmaSchema.safeParse(req.body)
-  if (!valida.success) {
-    res.status(400).json({ erro: "Nome de turma inválido", details: valida.error })
-    return
-  }
-
   try {
-    const grupoId = await getTurmaGrupo(valida.data.nome);
-    const turma = await prisma.turma.create({
-      data: {
-        nome: valida.data.nome,
-        grupoId: grupoId
-      }
-    })
+    const schoolId = req.schoolId
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+    const valida = createClassSchema.safeParse(req.body)
+    if (!valida.success) {
+      return res.status(400).json({ erro: "Nome de turma inválido", details: valida.error })
+    }
+
+    const service = new ClassService(schoolId)
+    const turma = await service.create(valida.data)
+    
     res.status(201).json(turma)
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Grupo')) {
-      res.status(400).json({ 
-        erro: "Erro ao criar turma", 
-        details: error.message 
-      })
+
+  } catch (error: any) {
+    if (error.message.includes('Grupo')) {
+        res.status(400).json({ erro: "Erro de Configuração", details: error.message })
     } else {
-      res.status(400).json({ 
-        erro: "Erro ao criar turma", 
-        details: "Erro interno do servidor" 
-      })
+        res.status(400).json({ erro: "Erro ao criar turma", details: error.message })
     }
   }
 })
 
-router.get("/", async (req, res) => {
-  try {
-    const turmas = await prisma.turma.findMany({
-      include: {
-        professores: {
-          include: {
-            usuario: true
-          }
-        },
-        alunos: true
-      }
-    })
-    res.status(200).json(turmas)
-  } catch (error) {
-    res.status(400).json(error)
-  }
+// Lista todas as turmas
+router.get("/", checkToken, async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const service = new ClassService(schoolId)
+        const turmas = await service.findAll()
+
+        res.status(200).json(turmas)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
+    }
 })
 
-router.post("/:usuarioId/professor", async (req, res) => {
-  try {
-    const usuarioId = parseInt(req.params.usuarioId)
-    
-    if (isNaN(usuarioId)) {
-      return res.status(400).json({ erro: "ID de usuário inválido" })
-    }
-    
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: usuarioId },
-      include: {
-        roles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    })
+// Adiciona um professor a uma turma
+router.post("/:usuarioId/professor", checkToken, checkRoles(["ADMIN"]), async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    if (!usuario) {
-      return res.status(404).json({ erro: "Usuário não encontrado" })
-    }
-    const isProfessor = usuario.roles.some(ur => ur.role.tipo === "PROFESSOR")
-    if (!isProfessor) {
-      return res.status(400).json({ erro: "O usuário deve ter a role PROFESSOR" })
-    }
-    if (!req.body.turmaId) {
-      return res.status(400).json({ erro: "O ID da turma é obrigatório" })
-    }
+        const usuarioId = parseInt(req.params.usuarioId)
+        if (isNaN(usuarioId)) return res.status(400).json({ erro: "ID de usuário inválido" })
 
-    const professorTurma = await prisma.professorTurma.create({
-      data: {
-        usuarioId,
-        turmaId: req.body.turmaId
-      }
-    })
-    res.status(201).json(professorTurma)
-  } catch (error) {
-    res.status(400).json(error)
-  }
+        const valida = assignTeacherSchema.safeParse(req.body)
+        if (!valida.success) return res.status(400).json({ erro: "Dados inválidos", details: valida.error })
+
+        const service = new ClassService(schoolId)
+        const relation = await service.addProfessor(valida.data.turmaId, usuarioId)
+
+        res.status(201).json(relation)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
+    }
 })
 
-router.get("/:turmaId/alunos", async (req, res) => {
-  try {
-    const turma = await prisma.turma.findUnique({
-      where: { id: parseInt(req.params.turmaId) },
-      include: {
-        alunos: {
-          include: {
-            responsaveis: {
-              include: {
-                usuario: true
-              }
-            }
-          }
-        }
-      }
-    })
+// Busca todos os alunos de uma turma
+router.get("/:turmaId/alunos", checkToken, async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    if (!turma) {
-      return res.status(404).json({ erro: "Turma não encontrada" })
+        const turmaId = parseInt(req.params.turmaId)
+        if (isNaN(turmaId)) return res.status(400).json({ erro: "ID inválido" })
+
+        const service = new ClassService(schoolId)
+        const turma = await service.findById(turmaId)
+
+        if (!turma) return res.status(404).json({ erro: "Turma não encontrada" })
+
+        res.status(200).json(turma.alunos)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
     }
-
-    res.status(200).json(turma.alunos)
-  } catch (error) {
-    res.status(400).json(error)
-  }
 })
 
+// Busca o total de alunos ativos
 router.get("/totalAlunosTurma", checkToken, checkRoles(["ADMIN"]), async (req, res) => {
-  try {
-    const turmasComTotalAlunos = await prisma.turma.findMany({
-      include: {
-        _count: {
-          select: {
-            alunos: {
-              where: {
-                isAtivo: true
-              }
-            }
-          }
-        }
-      }
-    })
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    const resultado = turmasComTotalAlunos.map(turma => ({
-      id: turma.id,
-      nome: turma.nome,
-      totalAlunosAtivos: turma._count.alunos
-    }))
+        const service = new ClassService(schoolId)
+        const result = await service.getTotalActiveStudents()
 
-    res.status(200).json(resultado)
-  } catch (error) {
-    res.status(400).json(error)
-  }
+        res.status(200).json(result)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
+    }
 })
 
 export default router

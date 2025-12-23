@@ -1,299 +1,151 @@
-import { PrismaClient, TIPO_EVENTO } from "@prisma/client"
 import { Router, Request, Response } from "express"
-import { z } from 'zod'
-import { checkToken } from '../middlewares/checkToken'
-import { checkRoles } from "../middlewares/checkRoles"
-import normalizarData from "../utils/normalizaData"
+import { checkToken } from '../src/shared/middlewares/checkToken'
+import { checkRoles } from "../src/shared/middlewares/checkRoles"
+import { createEventSchema, updateEventSchema } from "../schemas/event.schema"
+import { EventService } from "../services/eventService"
 
-const prisma = new PrismaClient()
 const router = Router()
 
-const eventoSchema = z.object({
-  titulo: z.string().max(100),
-  descricao: z.string().max(500),
-  data: z.string().datetime(),
-  horaInicio: z.string().regex(/^\d{2}:\d{2}$/, "Formato deve ser HH:MM"),
-  horaFim: z.string().regex(/^\d{2}:\d{2}$/, "Formato deve ser HH:MM"),
-  tipoEvento: z.nativeEnum(TIPO_EVENTO),
-  isAtivo: z.boolean().default(true),
-  turmaId: z.number().int().positive(),
-  criadorId: z.number().int().positive()
-})
-
-const eventoPatchSchema = z.object({
-  titulo: z.string().max(100).optional(),
-  descricao: z.string().max(500).optional(),
-  data: z.string().datetime().optional(),
-  horaInicio: z.string().regex(/^\d{2}:\d{2}$/, "Formato deve ser HH:MM").optional(),
-  horaFim: z.string().regex(/^\d{2}:\d{2}$/, "Formato deve ser HH:MM").optional(),
-  tipoEvento: z.nativeEnum(TIPO_EVENTO).optional(),
-  isAtivo: z.boolean().optional(),
-  turmaId: z.number().int().positive().optional(),
-  criadorId: z.number().int().positive().optional()
-})
-
+// Cria um novo evento
 router.post("/", checkToken, checkRoles(["ADMIN", "PROFESSOR"]), async (req: Request, res: Response) => {
-  const valida = eventoSchema.safeParse(req.body)
-  if (!valida.success) {
-    return res.status(400).json({ erro: valida.error })
-  }
-
   try {
-    const dataFormatada = normalizarData(valida.data.data);
+    const schoolId = req.schoolId
+    const criadorId = req.userLogadoId
 
-    const turmaExistente = await prisma.turma.findUnique({
-      where: { id: valida.data.turmaId }
-    })
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+    if (!criadorId) return res.status(401).json({ error: "Usuário não identificado" })
 
-    if (!turmaExistente) {
-      return res.status(404).json({ erro: "Turma não encontrada" })
+    const valida = createEventSchema.safeParse(req.body)
+    if (!valida.success) {
+      return res.status(400).json({ erro: valida.error })
     }
 
-    const evento = await prisma.evento.create({
-      data: {
-        ...valida.data,
-        data: new Date(dataFormatada)
-      }
-    })
+    const service = new EventService(schoolId)
+    const evento = await service.create(valida.data, criadorId)
 
     return res.status(201).json(evento)
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao criar evento:", error)
-    return res.status(500).json({ erro: "Erro ao criar evento" })
+    return res.status(500).json({ erro: error.message || "Erro ao criar evento" })
   }
 })
 
-// Rota para listar todos os eventos
+// Busca todos os eventos
 router.get("/", checkToken, async (req: Request, res: Response) => {
   try {
+    const schoolId = req.schoolId
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
     const { data, tipoEvento, turmaId, isAtivo } = req.query;
-
-    let filtro: any = {};
     
-    if (data) {
-      const dataFormatada = normalizarData(data as string);
-      filtro.data = new Date(dataFormatada);
-    }
-    
-    if (tipoEvento) {
-      filtro.tipoEvento = tipoEvento;
-    }
-    
-    if (turmaId) {
-      filtro.turmaId = parseInt(turmaId as string);
-    }
-    
-    if (isAtivo !== undefined) {
-      filtro.isAtivo = isAtivo === 'true';
-    }
-
-    const eventos = await prisma.evento.findMany({
-      where: filtro,
-      include: {
-        turma: true,
-        criador: {
-          select: {
-            id: true,
-            nome: true,
-            email: true
-          }
-        }
-      },
-      orderBy: {
-        data: 'asc'
-      }
+    const service = new EventService(schoolId)
+    const eventos = await service.findAll({
+        data: data as string,
+        tipoEvento: tipoEvento as any,
+        turmaId: turmaId ? parseInt(turmaId as string) : undefined,
+        isAtivo: isAtivo !== undefined ? isAtivo === 'true' : undefined
     })
 
     return res.status(200).json(eventos)
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao listar eventos:", error)
-    return res.status(500).json({ erro: "Erro ao listar eventos" })
+    return res.status(500).json({ erro: error.message || "Erro ao listar eventos" })
   }
 })
 
-// Rota para buscar eventos por turma
+// Busca todos os eventos de uma turma
 router.get("/turma/:turmaId", checkToken, async (req: Request, res: Response) => {
   try {
+    const schoolId = req.schoolId
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
     const turmaId = parseInt(req.params.turmaId)
+    if (isNaN(turmaId)) return res.status(400).json({ erro: "ID da turma inválido" })
 
-    const turmaExistente = await prisma.turma.findUnique({
-      where: { id: turmaId }
-    })
-
-    if (!turmaExistente) {
-      return res.status(404).json({ erro: "Turma não encontrada" })
-    }
-
-    const eventos = await prisma.evento.findMany({
-      where: { 
-        turmaId,
-        isAtivo: true
-      },
-      include: {
-        criador: {
-          select: {
-            id: true,
-            nome: true,
-            email: true
-          }
-        }
-      },
-      orderBy: {
-        data: 'asc'
-      }
-    })
+    const service = new EventService(schoolId)
+    const eventos = await service.findByTurma(turmaId)
 
     return res.status(200).json(eventos)
-  } catch (error) {
-    console.error("Erro ao buscar eventos da turma:", error)
-    return res.status(500).json({ erro: "Erro ao buscar eventos da turma" })
+  } catch (error: any) {
+    return res.status(500).json({ erro: error.message || "Erro ao buscar eventos da turma" })
   }
 })
 
-// Rota para buscar um evento por ID
+// Busca um evento por ID
 router.get("/:id", checkToken, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id)
-    
-    const evento = await prisma.evento.findUnique({
-      where: { id },
-      include: {
-        turma: true,
-        criador: {
-          select: {
-            id: true,
-            nome: true,
-            email: true
-          }
-        }
-      }
-    })
+    const schoolId = req.schoolId
+    if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    if (!evento) {
-      return res.status(404).json({ erro: "Evento não encontrado" })
-    }
+    const id = parseInt(req.params.id)
+    if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
+
+    const service = new EventService(schoolId)
+    const evento = await service.findById(id)
+
+    if (!evento) return res.status(404).json({ erro: "Evento não encontrado" })
 
     return res.status(200).json(evento)
-  } catch (error) {
-    console.error("Erro ao buscar evento:", error)
-    return res.status(500).json({ erro: "Erro ao buscar evento" })
+  } catch (error: any) {
+    return res.status(500).json({ erro: error.message })
   }
 })
 
-// Rota para atualizar um evento
+// Atualiza um evento
 router.put("/:id", checkToken, checkRoles(["ADMIN", "PROFESSOR"]), async (req: Request, res: Response) => {
-  const valida = eventoSchema.safeParse(req.body)
-  if (!valida.success) {
-    return res.status(400).json({ erro: valida.error })
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-  try {
-    const id = parseInt(req.params.id)
-    const dataFormatada = normalizarData(valida.data.data);
+        const id = parseInt(req.params.id)
+        if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
 
-    const eventoExistente = await prisma.evento.findUnique({
-      where: { id }
-    })
+        const valida = createEventSchema.safeParse(req.body) 
+        if (!valida.success) return res.status(400).json({ erro: valida.error })
 
-    if (!eventoExistente) {
-      return res.status(404).json({ erro: "Evento não encontrado" })
+        const service = new EventService(schoolId)
+        const evento = await service.update(id, valida.data)
+
+        return res.status(200).json(evento)
+    } catch (error: any) {
+        return res.status(500).json({ erro: error.message })
     }
-
-    const turmaExistente = await prisma.turma.findUnique({
-      where: { id: valida.data.turmaId }
-    })
-
-    if (!turmaExistente) {
-      return res.status(404).json({ erro: "Turma não encontrada" })
-    }
-
-    const evento = await prisma.evento.update({
-      where: { id },
-      data: {
-        ...valida.data,
-        data: new Date(dataFormatada)
-      }
-    })
-
-    return res.status(200).json(evento)
-  } catch (error) {
-    console.error("Erro ao atualizar evento:", error)
-    return res.status(500).json({ erro: "Erro ao atualizar evento" })
-  }
 })
 
-// Rota para atualização parcial de um evento
+// Atualiza parcialmente um evento
 router.patch("/:id", checkToken, checkRoles(["ADMIN", "PROFESSOR"]), async (req: Request, res: Response) => {
-  const valida = eventoPatchSchema.safeParse(req.body)
-  if (!valida.success) {
-    return res.status(400).json({ erro: valida.error })
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-  try {
-    const id = parseInt(req.params.id)
-    
-    const eventoExistente = await prisma.evento.findUnique({
-      where: { id }
-    })
+        const id = parseInt(req.params.id)
+        const valida = updateEventSchema.safeParse(req.body)
+        if (!valida.success) return res.status(400).json({ erro: valida.error })
 
-    if (!eventoExistente) {
-      return res.status(404).json({ erro: "Evento não encontrado" })
+        const service = new EventService(schoolId)
+        const evento = await service.update(id, valida.data)
+
+        return res.status(200).json(evento)
+    } catch (error: any) {
+        return res.status(500).json({ erro: error.message })
     }
-
-    if (valida.data.turmaId) {
-      const turmaExistente = await prisma.turma.findUnique({
-        where: { id: valida.data.turmaId }
-      })
-
-      if (!turmaExistente) {
-        return res.status(404).json({ erro: "Turma não encontrada" })
-      }
-    }
-
-    let dadosAtualizacao: any = { ...valida.data };
-    
-    if (valida.data.data) {
-      const dataFormatada = normalizarData(valida.data.data);
-      dadosAtualizacao.data = new Date(dataFormatada);
-    }
-
-    const evento = await prisma.evento.update({
-      where: { id },
-      data: dadosAtualizacao
-    })
-
-    return res.status(200).json(evento)
-  } catch (error) {
-    console.error("Erro ao atualizar evento:", error)
-    return res.status(500).json({ erro: "Erro ao atualizar parcialmente o evento" })
-  }
 })
 
-// Rota para desativar um evento
+// Desativa um evento (Soft Delete)
 router.delete("/:id", checkToken, checkRoles(["ADMIN", "PROFESSOR"]), async (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id)
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+        const id = parseInt(req.params.id)
 
-    const eventoExistente = await prisma.evento.findUnique({
-      where: { id }
-    })
+        const service = new EventService(schoolId)
+        await service.delete(id)
 
-    if (!eventoExistente) {
-      return res.status(404).json({ erro: "Evento não encontrado" })
+        return res.status(200).json({ mensagem: "Evento desativado com sucesso" })
+    } catch (error: any) {
+        return res.status(500).json({ erro: error.message })
     }
-
-    const evento = await prisma.evento.update({
-      where: { id },
-      data: {
-        isAtivo: false
-      }
-    })
-
-    return res.status(200).json({ mensagem: "Evento desativado com sucesso" })
-  } catch (error) {
-    console.error("Erro ao desativar evento:", error)
-    return res.status(500).json({ erro: "Erro ao desativar evento" })
-  }
 })
 
 export default router
+

@@ -2,7 +2,7 @@
     "openapi": "3.0.0",
     "info": {
         "title": "API Escolar",
-        "description": "Essa API é um sistema de gerenciamento escolar que permite o cadastro de administradores, alunos, responsáveis e professores, além de possibilitar a criação de turmas e o registro dos diários dos alunos que relatam sua rotina escolar.",
+        "description": "API para sistema de gerenciamento escolar multi-tenant. Permite cadastro de usuários, alunos, turmas, diários, eventos, entre outros. O contexto do tenant é definido pelo header 'x-tenant-id'.",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "email": "alexseyf66@gmail.com"
@@ -12,563 +12,842 @@
     "servers": [
         {
             "url": "http://localhost:3000",
-            "description": "Servidor local"
+            "description": "Servidor Local"
         },
         {
             "url": "https://elo-api-alexseyfs-projects.vercel.app",
-            "description": "Servidor em produção"
+            "description": "Servidor de Produção"
         }
     ],
+    "tags": [
+        { "name": "Autenticação", "description": "Endpoints de login e recuperação de senha" },
+        { "name": "Plataforma", "description": "Endpoints administrativos globais (Platform Admin)" },
+        { "name": "Usuarios", "description": "Gerenciamento de usuários da escola" },
+        { "name": "Alunos", "description": "Gerenciamento de alunos" },
+        { "name": "Turmas", "description": "Gerenciamento de turmas" },
+        { "name": "Professores", "description": "Operações específicas para professores" },
+        { "name": "Responsaveis", "description": "Operações específicas para responsáveis" },
+        { "name": "Diarios", "description": "Registro e consulta de diários de classe" },
+        { "name": "Eventos", "description": "Gerenciamento de eventos escolares" },
+        { "name": "Cronogramas", "description": "Gerenciamento de cronogramas/rotinas" },
+        { "name": "Atividades", "description": "Atividades pedagógicas" },
+        { "name": "Objetivos", "description": "Objetivos de aprendizagem" },
+        { "name": "Grupos", "description": "Grupos por campo de experiência" },
+        { "name": "Campos", "description": "Campos de experiência" }
+    ],
     "paths": {
-        "/usuarios": {
-            "summary": "Operações de usuários",
-            "description": "Gerenciamento de usuários do sistema",
-            "get": {
-                "summary": "Lista usuários",
-                "description": "Lista todos os usuários cadastrados, exceto alunos",
-                "tags": ["Usuarios"],
-                "responses": {
-                    "200": {
-                        "description": "Operação bem-sucedida",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Usuario"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Não autorizado"
-                    },
-                    "500": {
-                        "description": "Erro interno do servidor"
-                    }
-                }
-            },
-            "post": {
-                "summary": "Cria um novo usuário",
-                "description": "Adiciona um novo usuário ao sistema",
-                "tags": ["Usuarios"],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/Usuario"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "description": "Usuário criado com sucesso"
-                    },
-                    "400": {
-                        "description": "Dados inválidos"
-                    },
-                    "500": {
-                        "description": "Erro interno do servidor"
-                    }
-                }
-            }
-        },
         "/login": {
-            "summary": "Autenticação de usuários",
-            "description": "Operações de login no sistema",
             "post": {
-                "summary": "Autenticar usuário",
-                "description": "Realiza o login do usuário e retorna o token JWT",
                 "tags": ["Autenticação"],
+                "summary": "Login de usuário (Tenant)",
+                "description": "Autentica um usuário de uma escola específica.",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "email": {
-                                        "type": "string"
-                                    },
-                                    "senha": {
-                                        "type": "string"
-                                    }
+                                    "email": { "type": "string" },
+                                    "senha": { "type": "string" }
                                 },
                                 "required": ["email", "senha"]
                             }
                         }
-                    },
-                    "required": true
+                    }
                 },
                 "responses": {
-                    "200": {
-                        "description": "Login bem-sucedido",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": {
-                                            "type": "number"
-                                        },
-                                        "nome": {
-                                            "type": "string"
-                                        },
-                                        "email": {
-                                            "type": "string"
-                                        },
-                                        "roles": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string"
-                                            }
-                                        },
-                                        "token": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Credenciais inválidas"
-                    }
+                    "200": { "description": "Login realizado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+                    "400": { "description": "Dados inválidos" },
+                    "401": { "description": "Credenciais inválidas" }
                 }
             }
         },
-        "/alunos": {
-            "summary": "Operações com alunos",
-            "description": "Gerenciamento de alunos do sistema",
-            "get": {
-                "summary": "Lista alunos",
-                "description": "Lista todos os alunos cadastrados",
-                "tags": ["Alunos"],
-                "responses": {
-                    "200": {
-                        "description": "Operação bem-sucedida",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Aluno"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Erro ao buscar alunos"
-                    }
-                }
-            },
+        "/recupera-senha": {
             "post": {
-                "summary": "Cria um novo aluno",
-                "description": "Adiciona um novo aluno ao sistema",
-                "tags": ["Alunos"],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/Aluno"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "description": "Aluno criado com sucesso"
-                    },
-                    "400": {
-                        "description": "Dados inválidos"
-                    }
-                }
-            }
-        },
-        "/alunos/responsavel": {
-            "summary": "Associação de responsáveis a alunos",
-            "description": "Vincula um responsável a um aluno",
-            "post": {
-                "summary": "Associa um responsável a um aluno",
-                "description": "Cria uma relação entre um usuário com role RESPONSAVEL e um aluno",
-                "tags": ["Alunos"],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "alunoId": {
-                                        "type": "number"
-                                    },
-                                    "usuarioId": {
-                                        "type": "number"
-                                    }
-                                },
-                                "required": ["alunoId", "usuarioId"]
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "description": "Associação criada com sucesso"
-                    },
-                    "400": {
-                        "description": "Dados inválidos ou usuário não possui role RESPONSAVEL"
-                    },
-                    "404": {
-                        "description": "Usuário não encontrado"
-                    }
-                }
-            }
-        },
-        "/turmas": {
-            "summary": "Operações com turmas",
-            "description": "Gerenciamento de turmas do sistema",
-            "get": {
-                "summary": "Lista turmas",
-                "description": "Lista todas as turmas cadastradas",
-                "tags": ["Turmas"],
-                "responses": {
-                    "200": {
-                        "description": "Operação bem-sucedida",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Turma"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Erro ao buscar turmas"
-                    }
-                }
-            },
-            "post": {
-                "summary": "Cria uma nova turma",
-                "description": "Adiciona uma nova turma ao sistema",
-                "tags": ["Turmas"],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/TurmaInput"
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "description": "Turma criada com sucesso"
-                    },
-                    "400": {
-                        "description": "Dados inválidos"
-                    }
-                }
-            }
-        },
-        "/turmas/professor": {
-            "summary": "Associação de professores a turmas",
-            "description": "Vincula um professor a uma turma",
-            "post": {
-                "summary": "Associa um professor a uma turma",
-                "description": "Cria uma relação entre um usuário com role PROFESSOR e uma turma",
-                "tags": ["Turmas"],
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "turmaId": {
-                                        "type": "number"
-                                    },
-                                    "usuarioId": {
-                                        "type": "number"
-                                    }
-                                },
-                                "required": ["turmaId", "usuarioId"]
-                            }
-                        }
-                    },
-                    "required": true
-                },
-                "responses": {
-                    "201": {
-                        "description": "Associação criada com sucesso"
-                    },
-                    "400": {
-                        "description": "Dados inválidos ou usuário não possui role PROFESSOR"
-                    },
-                    "404": {
-                        "description": "Usuário não encontrado"
-                    }
-                }
-            }
-        },
-        "/turmas/{turmaId}/alunos": {
-            "summary": "Alunos de uma turma",
-            "description": "Obtém os alunos de uma turma específica",
-            "get": {
-                "summary": "Lista alunos de uma turma",
-                "description": "Retorna todos os alunos pertencentes a uma determinada turma",
-                "tags": ["Turmas"],
-                "parameters": [
-                    {
-                        "name": "turmaId",
-                        "in": "path",
-                        "description": "ID da turma",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Operação bem-sucedida",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Aluno"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Erro ao buscar alunos"
-                    },
-                    "404": {
-                        "description": "Turma não encontrada"
-                    }
-                }
-            }
-        },
-        "/professores/{professorId}/turmas": {
-            "summary": "Turmas de um professor",
-            "description": "Obtém as turmas de um professor específico",
-            "get": {
-                "summary": "Lista turmas de um professor",
-                "description": "Retorna todas as turmas associadas a um determinado professor",
-                "tags": ["Professores"],
-                "parameters": [
-                    {
-                        "name": "professorId",
-                        "in": "path",
-                        "description": "ID do professor (usuário com role PROFESSOR)",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Operação bem-sucedida",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/components/schemas/Turma"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Erro ao buscar turmas"
-                    },
-                    "404": {
-                        "description": "Professor não encontrado"
-                    }
-                }
-            }
-        },
-        "/recuperaSenha": {
-            "summary": "Recuperação de senha",
-            "description": "Envia código de recuperação de senha por email",
-            "post": {
-                "summary": "Solicita código de recuperação de senha",
-                "description": "Gera um código de recuperação e envia para o email do usuário",
                 "tags": ["Autenticação"],
+                "summary": "Solicitar recuperação de senha",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "properties": {
-                                    "email": {
-                                        "type": "string"
-                                    }
-                                },
+                                "properties": { "email": { "type": "string" } },
                                 "required": ["email"]
                             }
                         }
-                    },
-                    "required": true
+                    }
                 },
                 "responses": {
-                    "200": {
-                        "description": "Código de recuperação enviado com sucesso"
-                    },
-                    "400": {
-                        "description": "Email não fornecido"
-                    }
+                    "200": { "description": "Email enviado" },
+                    "400": { "description": "Erro na solicitação" }
                 }
             }
         },
-        "/validaSenha": {
-            "summary": "Validação de senha e redefinição",
-            "description": "Valida o código de recuperação e redefine a senha",
+        "/valida-senha": {
             "post": {
-                "summary": "Redefine a senha com código de recuperação",
-                "description": "Valida o código enviado por email e atualiza a senha do usuário",
                 "tags": ["Autenticação"],
+                "summary": "Validar código e trocar senha",
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "email": {
-                                        "type": "string"
-                                    },
-                                    "code": {
-                                        "type": "string"
-                                    },
-                                    "novaSenha": {
-                                        "type": "string"
-                                    }
+                                    "email": { "type": "string" },
+                                    "code": { "type": "string" },
+                                    "novaSenha": { "type": "string" }
                                 },
                                 "required": ["email", "code", "novaSenha"]
                             }
                         }
-                    },
-                    "required": true
+                    }
                 },
                 "responses": {
-                    "200": {
-                        "description": "Senha alterada com sucesso"
-                    },
-                    "400": {
-                        "description": "Campos obrigatórios não fornecidos, código inválido/expirado ou validação de senha falhou"
-                    },
-                    "404": {
-                        "description": "Email não encontrado"
-                    }
+                    "200": { "description": "Senha alterada com sucesso" },
+                    "400": { "description": "Token inválido ou dados incorretos" }
                 }
+            }
+        },
+        "/api/v1/platform/login": {
+            "post": {
+                "tags": ["Plataforma"],
+                "summary": "Login de Administrador da Plataforma",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "email": { "type": "string" },
+                                    "senha": { "type": "string" }
+                                },
+                                "required": ["email", "senha"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Login realizado" },
+                    "401": { "description": "Não autorizado" }
+                }
+            }
+        },
+        "/api/v1/platform/schools": {
+            "get": {
+                "tags": ["Plataforma"],
+                "summary": "Listar todas as escolas",
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Lista de escolas" },
+                    "403": { "description": "Acesso negado (Requer PLATFORM_ADMIN)" }
+                }
+            }
+        },
+        "/api/v1/platform/users": {
+            "get": {
+                "tags": ["Plataforma"],
+                "summary": "Listar todos os usuários da plataforma",
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Lista de usuários" },
+                    "403": { "description": "Acesso negado" }
+                }
+            }
+        },
+        "/api/v1/platform/metrics": {
+            "get": {
+                "tags": ["Plataforma"],
+                "summary": "Obter métricas globais",
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Métricas obtidas" },
+                    "403": { "description": "Acesso negado" }
+                }
+            }
+        },
+        "/usuarios": {
+            "get": {
+                "tags": ["Usuarios"],
+                "summary": "Listar usuários",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Lista de usuários" }
+                }
+            },
+            "post": {
+                "tags": ["Usuarios"],
+                "summary": "Criar usuário",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/UsuarioInput" }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": { "description": "Usuário criado" },
+                    "400": { "description": "Erro de validação" },
+                    "409": { "description": "Email já registrado" }
+                }
+            }
+        },
+        "/usuarios/usuario-logado": {
+            "get": {
+                "tags": ["Usuarios"],
+                "summary": "Obter dados do usuário logado",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Dados do usuário" },
+                    "404": { "description": "Usuário não encontrado" }
+                }
+            }
+        },
+        "/usuarios/{usuarioId}": {
+            "get": {
+                "tags": ["Usuarios"],
+                "summary": "Obter usuário por ID",
+                "parameters": [
+                    { "name": "usuarioId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Dados do usuário" },
+                    "404": { "description": "Usuário não encontrado" }
+                }
+            }
+        },
+        "/alunos": {
+            "get": {
+                "tags": ["Alunos"],
+                "summary": "Listar alunos",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Lista de alunos" }
+                }
+            },
+            "post": {
+                "tags": ["Alunos"],
+                "summary": "Criar aluno",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": {
+                        "application/json": { "schema": { "$ref": "#/components/schemas/AlunoInput" } }
+                    }
+                },
+                "responses": {
+                    "201": { "description": "Aluno criado" },
+                    "400": { "description": "Dados inválidos" }
+                }
+            }
+        },
+        "/alunos/ativos": {
+            "get": {
+                "tags": ["Alunos"],
+                "summary": "Listar alunos ativos",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Lista de alunos ativos" }
+                }
+            }
+        },
+        "/alunos/{id}": {
+            "get": {
+                "tags": ["Alunos"],
+                "summary": "Obter aluno por ID",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": {
+                    "200": { "description": "Dados do aluno" },
+                    "404": { "description": "Aluno não encontrado" }
+                }
+            },
+            "put": {
+                "tags": ["Alunos"],
+                "summary": "Atualizar aluno (Completo)",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AlunoInput" } } }
+                },
+                "responses": { "200": { "description": "Aluno atualizado" } }
+            },
+            "patch": {
+                "tags": ["Alunos"],
+                "summary": "Atualizar aluno (Parcial)",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AlunoInput" } } }
+                },
+                "responses": { "200": { "description": "Aluno atualizado" } }
+            }
+        },
+        "/alunos/soft/{id}": {
+            "delete": {
+                "tags": ["Alunos"],
+                "summary": "Desativar aluno (Soft Delete)",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Aluno desativado" } }
+            }
+        },
+        "/alunos/{usuarioId}/responsavel": {
+            "post": {
+                "tags": ["Alunos"],
+                "summary": "Adicionar responsável ao aluno",
+                "parameters": [
+                    { "name": "usuarioId", "in": "path", "description": "ID do usuário responsável", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": { "alunoId": { "type": "integer" } },
+                                "required": ["alunoId"]
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "Vínculo criado" } }
+            }
+        },
+        "/alunos/{alunoId}/responsavel/{usuarioId}": {
+            "delete": {
+                "tags": ["Alunos"],
+                "summary": "Remover responsável do aluno",
+                "parameters": [
+                    { "name": "alunoId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "name": "usuarioId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Responsável removido" } }
+            }
+        },
+        "/alunos/relatorios/mensalidades-por-turma": {
+            "get": {
+                "tags": ["Alunos"],
+                "summary": "Relatório de mensalidades por turma",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Relatório gerado" } }
+            }
+        },
+        "/alunos/{alunoId}/possui-registro-diario": {
+            "get": {
+                "tags": ["Alunos"],
+                "summary": "Verificar se aluno possui diário na data",
+                "parameters": [
+                    { "name": "alunoId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "name": "data", "in": "query", "schema": { "type": "string", "format": "date" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Status verificado" } }
+            }
+        },
+        "/turmas": {
+            "get": {
+                "tags": ["Turmas"],
+                "summary": "Listar turmas",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de turmas" } }
+            },
+            "post": {
+                "tags": ["Turmas"],
+                "summary": "Criar turma",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "type": "object", "properties": { "nome": { "type": "string" } } } } }
+                },
+                "responses": { "201": { "description": "Turma criada" } }
+            }
+        },
+        "/turmas/totalAlunosTurma": {
+            "get": {
+                "tags": ["Turmas"],
+                "summary": "Total de alunos por turma",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Totais obtidos" } }
+            }
+        },
+        "/turmas/{usuarioId}/professor": {
+            "post": {
+                "tags": ["Turmas"],
+                "summary": "Adicionar professor à turma",
+                "parameters": [
+                    { "name": "usuarioId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "type": "object", "properties": { "turmaId": { "type": "integer" } }, "required": ["turmaId"] } } }
+                },
+                "responses": { "201": { "description": "Professor vinculado" } }
+            }
+        },
+        "/turmas/{turmaId}/alunos": {
+            "get": {
+                "tags": ["Turmas"],
+                "summary": "Listar alunos da turma",
+                "parameters": [
+                    { "name": "turmaId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de alunos" } }
+            }
+        },
+        "/professores/{professorId}/turmas": {
+            "get": {
+                "tags": ["Professores"],
+                "summary": "Turmas de um professor",
+                "parameters": [
+                    { "name": "professorId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de turmas" } }
+            }
+        },
+        "/professores/professor-turma": {
+            "get": {
+                "tags": ["Professores"],
+                "summary": "Lista professores e suas turmas",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista obtida" } }
+            }
+        },
+        "/professores/{professorId}/turma/{turmaId}": {
+            "delete": {
+                "tags": ["Professores"],
+                "summary": "Desvincular professor de turma",
+                "parameters": [
+                    { "name": "professorId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "name": "turmaId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Desvinculado com sucesso" } }
+            }
+        },
+        "/responsaveis/{responsavelId}/alunos": {
+            "get": {
+                "tags": ["Responsaveis"],
+                "summary": "Alunos de um responsável",
+                "parameters": [
+                    { "name": "responsavelId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de alunos" } }
+            }
+        },
+        "/responsaveis/meus-alunos": {
+            "get": {
+                "tags": ["Responsaveis"],
+                "summary": "Alunos do responsável logado",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de alunos" } }
+            }
+        },
+        "/diarios": {
+            "post": {
+                "tags": ["Diarios"],
+                "summary": "Criar entrada no diário",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "content": { "application/json": { "schema": { "type": "object" } } }
+                },
+                "responses": { "201": { "description": "Diário criado" } }
+            }
+        },
+        "/diarios/aluno/{alunoId}": {
+            "get": {
+                "tags": ["Diarios"],
+                "summary": "Diários de um aluno",
+                "parameters": [
+                    { "name": "alunoId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de diários" } }
+            }
+        },
+        "/diarios/{id}": {
+            "get": {
+                "tags": ["Diarios"],
+                "summary": "Obter diário por ID",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Dados do diário" } }
+            },
+            "put": {
+                "tags": ["Diarios"],
+                "summary": "Atualizar diário",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            },
+            "patch": {
+                "tags": ["Diarios"],
+                "summary": "Atualizar diário (Parcial)",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            }
+        },
+        "/eventos": {
+            "get": {
+                "tags": ["Eventos"],
+                "summary": "Listar eventos",
+                "parameters": [
+                    { "name": "data", "in": "query", "schema": { "type": "string", "format": "date" } },
+                    { "name": "tipoEvento", "in": "query", "schema": { "type": "string" } },
+                    { "name": "turmaId", "in": "query", "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de eventos" } }
+            },
+            "post": {
+                "tags": ["Eventos"],
+                "summary": "Criar evento",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "201": { "description": "Evento criado" } }
+            }
+        },
+        "/eventos/turma/{turmaId}": {
+            "get": {
+                "tags": ["Eventos"],
+                "summary": "Listar eventos da turma",
+                "parameters": [
+                    { "name": "turmaId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de eventos" } }
+            }
+        },
+        "/eventos/{id}": {
+            "get": {
+                "tags": ["Eventos"],
+                "summary": "Evento por ID",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Dados do evento" } }
+            },
+            "put": {
+                "tags": ["Eventos"],
+                "summary": "Atualizar evento",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            },
+            "patch": {
+                "tags": ["Eventos"],
+                "summary": "Atualizar evento (Parcial)",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            },
+            "delete": {
+                "tags": ["Eventos"],
+                "summary": "Deletar evento",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Evento deletado" } }
+            }
+        },
+        "/cronogramas": {
+            "get": {
+                "tags": ["Cronogramas"],
+                "summary": "Listar cronogramas",
+                "parameters": [
+                    { "name": "data", "in": "query", "schema": { "type": "string" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            },
+            "post": {
+                "tags": ["Cronogramas"],
+                "summary": "Criar cronograma",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "201": { "description": "Criado" } }
+            }
+        },
+        "/cronogramas/{id}": {
+            "get": {
+                "tags": ["Cronogramas"],
+                "summary": "Obter por ID",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Dados do cronograma" } }
+            },
+            "put": {
+                "tags": ["Cronogramas"],
+                "summary": "Atualizar",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            },
+            "patch": {
+                "tags": ["Cronogramas"],
+                "summary": "Atualizar parcial",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "200": { "description": "Atualizado" } }
+            },
+            "delete": {
+                "tags": ["Cronogramas"],
+                "summary": "Deletar",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Deletado" } }
+            }
+        },
+        "/atividades": {
+            "get": {
+                "tags": ["Atividades"],
+                "summary": "Listar atividades",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista de atividades" } }
+            },
+            "post": {
+                "tags": ["Atividades"],
+                "summary": "Criar atividade",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "201": { "description": "Criada" } }
+            }
+        },
+        "/atividades/relatorio/campo-experiencia": {
+            "get": {
+                "tags": ["Atividades"],
+                "summary": "Relatório por campo",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Relatório" } }
+            }
+        },
+        "/atividades/{id}": {
+            "get": {
+                "tags": ["Atividades"],
+                "summary": "Obter atividade",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Dados da atividade" } }
+            }
+        },
+        "/atividades/turma-atividades/{professorId}": {
+            "get": {
+                "tags": ["Atividades"],
+                "summary": "Atividades de um professor",
+                "parameters": [
+                    { "name": "professorId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            }
+        },
+        "/objetivos": {
+            "get": {
+                "tags": ["Objetivos"],
+                "summary": "Listar objetivos",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            },
+            "post": {
+                "tags": ["Objetivos"],
+                "summary": "Criar objetivo",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "201": { "description": "Criado" } }
+            }
+        },
+        "/objetivos/turma/{turmaId}": {
+            "get": {
+                "tags": ["Objetivos"],
+                "summary": "Objetivos da turma",
+                "parameters": [
+                    { "name": "turmaId", "in": "path", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            }
+        },
+        "/objetivos/grupo-campo": {
+            "get": {
+                "tags": ["Objetivos"],
+                "summary": "Buscar por grupo e campo",
+                "parameters": [
+                    { "name": "grupoId", "in": "query", "required": true, "schema": { "type": "integer" } },
+                    { "name": "campoId", "in": "query", "required": true, "schema": { "type": "integer" } },
+                    { "$ref": "#/components/parameters/TenantId" }
+                ],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            }
+        },
+        "/grupos": {
+            "get": {
+                "tags": ["Grupos"],
+                "summary": "Listar grupos",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            }
+        },
+        "/campos": {
+            "get": {
+                "tags": ["Campos"],
+                "summary": "Listar campos de experiência",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "Lista" } }
+            },
+            "post": {
+                "tags": ["Campos"],
+                "summary": "Criar campo de experiência",
+                "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+                "responses": { "201": { "description": "Criado" } }
             }
         }
     },
     "components": {
+        "parameters": {
+            "TenantId": {
+                "name": "x-tenant-id",
+                "in": "header",
+                "description": "Slug ou ID da escola (Tenant)",
+                "required": true,
+                "schema": { "type": "string" }
+            }
+        },
         "schemas": {
-            "Usuario": {
+            "UsuarioInput": {
                 "type": "object",
                 "properties": {
-                    "id": {
-                        "type": "number"
-                    },
-                    "nome": {
-                        "type": "string"
-                    },
-                    "email": {
-                        "type": "string"
-                    },
-                    "senha": {
-                        "type": "string"
-                    },
-                    "telefone": {
-                        "type": "string"
-                    },
-                    "roles": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "enum": ["ADMIN", "PROFESSOR", "RESPONSAVEL"]
-                        }
-                    }
+                    "nome": { "type": "string" },
+                    "email": { "type": "string" },
+                    "senha": { "type": "string" },
+                    "telefone": { "type": "string" },
+                    "roles": { "type": "array", "items": { "type": "string", "enum": ["ADMIN", "PROFESSOR", "RESPONSAVEL"] } },
+                    "schoolId": { "type": "string", "description": "Obrigatório para PLATFORM_ADMIN criando usuário" }
                 },
                 "required": ["nome", "email", "senha", "telefone", "roles"]
             },
-            "Aluno": {
+            "AlunoInput": {
                 "type": "object",
                 "properties": {
-                    "id": {
-                        "type": "number"
-                    },
-                    "nome": {
-                        "type": "string"
-                    },
-                    "dataNasc": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "turmaId": {
-                        "type": "number"
-                    },
-                    "isAtivo": {
-                        "type": "boolean"
-                    },
-                    "turma": {
-                        "$ref": "#/components/schemas/Turma"
-                    },
-                    "responsaveis": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/Usuario"
-                        }
-                    }
+                    "nome": { "type": "string" },
+                    "dataNasc": { "type": "string", "format": "date-time" },
+                    "turmaId": { "type": "integer" },
+                    "isAtivo": { "type": "boolean" }
                 },
-                "required": ["nome", "dataNasc", "turmaId"]
+                "required": ["nome", "dataNasc"]
             },
-            "Turma": {
+            "LoginResponse": {
                 "type": "object",
                 "properties": {
-                    "id": {
-                        "type": "number"
-                    },
-                    "nome": {
-                        "type": "string",
-                        "enum": ["INFANTIL_1", "INFANTIL_2", "INFANTIL_3", "INFANTIL_4", "INFANTIL_5"]
-                    },
-                    "professores": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/Usuario"
-                        }
-                    },
-                    "alunos": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/Aluno"
-                        }
-                    }
+                    "token": { "type": "string" },
+                    "id": { "type": "integer" },
+                    "nome": { "type": "string" },
+                    "email": { "type": "string" },
+                    "roles": { "type": "array", "items": { "type": "string" } },
+                    "schoolSlug": { "type": "string" }
                 }
             },
-            "TurmaInput": {
+            "ErrorResponse": {
                 "type": "object",
                 "properties": {
-                    "nome": {
-                        "type": "string",
-                        "enum": ["INFANTIL_1", "INFANTIL_2", "INFANTIL_3", "INFANTIL_4", "INFANTIL_5"]
-                    }
-                },
-                "required": ["nome"]
+                    "erro": { "type": "string" },
+                    "details": { "type": "string" }
+                }
             }
         },
         "securitySchemes": {
@@ -578,10 +857,5 @@
                 "bearerFormat": "JWT"
             }
         }
-    },
-    "security": [
-        {
-            "bearerAuth": []
-        }
-    ]
+    }
 }

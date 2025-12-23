@@ -1,434 +1,236 @@
-import { PrismaClient, TIPO_USUARIO } from "@prisma/client"
 import { Router } from "express"
-import { z } from 'zod'
-import { checkToken } from '../middlewares/checkToken'
-import { checkRoles } from "../middlewares/checkRoles"
+import { TIPO_USUARIO } from "@prisma/client"
+import { checkToken } from '../src/shared/middlewares/checkToken'
+import { checkRoles } from "../src/shared/middlewares/checkRoles"
+import { StudentService } from "../services/studentService"
+import { createStudentSchema, updateStudentSchema } from "../schemas/student.schema"
 import normalizarData from "../utils/normalizaData"
+import { prisma } from "../config/prisma"
 
-const prisma = new PrismaClient()
 const router = Router()
 
-const alunoSchema = z.object({
-  nome: z.string().min(3).max(60),
-  dataNasc: z.string().datetime(),
-  turmaId: z.number().int().positive(),
-  isAtivo: z.boolean().optional(),
-  mensalidade: z.number().positive().optional()
-})
-
-const alunoPatchSchema = z.object({
-  nome: z.string().min(3).max(60).optional(),
-  dataNasc: z.string().datetime().optional(),
-  turmaId: z.number().int().positive().optional(),
-  isAtivo: z.boolean().optional(),
-  mensalidade: z.number().positive().optional()
-})
-
+// Cria estudante
 router.post("/", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  const valida = alunoSchema.safeParse(req.body)
-  if (!valida.success) {
-    res.status(400).json({ erro: valida.error })
-    return
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-  try {
-    const aluno = await prisma.aluno.create({
-      data: {
-        ...valida.data,
-        dataNasc: new Date(valida.data.dataNasc)
-      }
-    })
-    res.status(201).json(aluno)
-  } catch (error) {
-    res.status(400).json(error)
-  }
+        const valida = createStudentSchema.safeParse(req.body)
+        if (!valida.success) return res.status(400).json({ erro: valida.error })
+
+        const service = new StudentService(schoolId)
+        const aluno = await service.create(valida.data)
+        
+        res.status(201).json(aluno)
+    } catch (error: any) {
+        console.error("Erro ao criar aluno:", error)
+        res.status(400).json({ erro: error.message })
+    }
 })
 
-router.get("/", async (req, res) => {
-  try {
-    const alunos = await prisma.aluno.findMany({
-      include: {
-        turma: true,
-        responsaveis: {
-          include: {
-            usuario: true
-          }
-        }
-      }
-    })
-    res.status(200).json(alunos)
-  } catch (error) {
-    res.status(400).json(error)
-  }
+// Lista todos os estudantes
+router.get("/", checkToken, async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const service = new StudentService(schoolId)
+        const alunos = await service.findAll()
+        
+        res.status(200).json(alunos)
+    } catch (error) {
+        res.status(500).json(error)
+    }
 })
 
-router.post("/:usuarioId/responsavel", async (req, res) => {
-  try {
-    const usuarioId = parseInt(req.params.usuarioId)
-    
-    if (isNaN(usuarioId)) {
-      return res.status(400).json({ erro: "ID de usuário inválido" })
-    }
-    
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: usuarioId },
-      include: {
-        roles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    })
-
-    if (!usuario) {
-      return res.status(404).json({ erro: "Usuário não encontrado" })
-    }
-
-    const isResponsavel = usuario.roles.some(ur => ur.role.tipo === "RESPONSAVEL")
-    if (!isResponsavel) {
-      return res.status(400).json({ erro: "O usuário deve ter a role RESPONSAVEL" })
-    }
-
-    if (!req.body.alunoId) {
-      return res.status(400).json({ erro: "O ID do aluno é obrigatório" })
-    }
-
-    const responsavelAluno = await prisma.responsavelAluno.create({
-      data: {
-        alunoId: req.body.alunoId,
-        usuarioId
-      }
-    })
-    res.status(201).json(responsavelAluno)
-  } catch (error) {
-    res.status(400).json(error)
-  }
-})
-
-router.get("/:alunoId/possui-registro-diario", async (req, res) => {
-  try {
-    const alunoId = parseInt(req.params.alunoId)
-    
-    if (isNaN(alunoId)) {
-      return res.status(400).json({ erro: "ID de aluno inválido" })
-    }
-    
-    const aluno = await prisma.aluno.findUnique({
-      where: { id: alunoId }
-    })
-
-    if (!aluno) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
-
-    const dataConsulta = req.query.data ? req.query.data.toString() : new Date().toISOString()
-    const dataFormatada = normalizarData(dataConsulta)
-    const dataInicio = new Date(`${dataFormatada}T00:00:00.000Z`)
-    const dataFim = new Date(`${dataFormatada}T23:59:59.999Z`)
-    
-    const diario = await prisma.diario.findFirst({
-      where: { 
-        alunoId,
-        data: {
-          gte: dataInicio,
-          lte: dataFim
-        }
-      }
-    })
-
-    res.status(200).json({ 
-      alunoId, 
-      data: dataFormatada,
-      temDiario: !!diario,
-      diario: diario ? { id: diario.id } : null
-    })
-  } catch (error) {
-    console.error("Erro ao verificar diário:", error)
-    res.status(400).json({ erro: "Erro ao verificar diário", detalhes: error })
-  }
-})
-
+// Lista todos os estudantes ativos
 router.get("/ativos", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  try {
-    const alunosAtivos = await prisma.aluno.findMany({
-      where: {
-        isAtivo: true
-      },
-      include: {
-        turma: true,
-        responsaveis: {
-          include: {
-            usuario: true
-          }
-        }
-      },
-      orderBy: {
-        nome: 'asc'
-      }
-    })
-    
-    res.status(200).json(alunosAtivos)
-  } catch (error) {
-    console.error("Erro ao buscar alunos ativos:", error)
-    res.status(500).json({ erro: "Erro ao buscar alunos ativos" })
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const service = new StudentService(schoolId)
+        const alunos = await service.findAll(true)
+        
+        res.status(200).json(alunos)
+    } catch (error) {
+        res.status(500).json(error)
+    }
 })
 
+// Busca estudante por ID
 router.get("/:id", checkToken, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id)
-    
-    if (isNaN(id)) {
-      return res.status(400).json({ erro: "ID de aluno inválido" })
-    }
-    
-    const aluno = await prisma.aluno.findUnique({
-      where: { id },
-      include: {
-        turma: true,
-        responsaveis: {
-          include: {
-            usuario: true
-          }
-        },
-        diario: {
-          orderBy: {
-            data: 'desc'
-          },
-          include: {
-            periodosSono: true,
-            itensProvidencia: {
-              include: {
-                itemProvidencia: true
-              }
-            }
-          }
-        }
-      }
-    })
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-    if (!aluno) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
+        const id = parseInt(req.params.id)
+        if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
 
-    res.status(200).json(aluno)
-  } catch (error) {
-    console.error("Erro ao buscar informações do aluno:", error)
-    res.status(500).json({ erro: "Erro ao buscar informações do aluno", detalhes: error })
-  }
+        const service = new StudentService(schoolId)
+        const aluno = await service.findById(id)
+
+        if (!aluno) return res.status(404).json({ erro: "Aluno não encontrado" })
+
+        res.status(200).json(aluno)
+    } catch (error) {
+         res.status(500).json({ erro: "Erro ao buscar aluno" })
+    }
 })
 
-router.delete("/:alunoId/responsavel/:usuarioId", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  try {
-    const alunoId = parseInt(req.params.alunoId)
-    const usuarioId = parseInt(req.params.usuarioId)
-    
-    if (isNaN(alunoId) || isNaN(usuarioId)) {
-      return res.status(400).json({ erro: "IDs inválidos" })
-    }
-
-    const aluno = await prisma.aluno.findUnique({
-      where: { id: alunoId }
-    })
-
-    if (!aluno) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
-
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: usuarioId },
-      include: {
-        roles: {
-          include: {
-            role: true
-          }
-        }
-      }
-    })
-
-    if (!usuario) {
-      return res.status(404).json({ erro: "Usuário não encontrado" })
-    }
-
-    const isResponsavel = usuario.roles.some(ur => ur.role.tipo === "RESPONSAVEL")
-    if (!isResponsavel) {
-      return res.status(400).json({ erro: "O usuário não é um responsável" })
-    }
-
-    const relacaoExistente = await prisma.responsavelAluno.findFirst({
-      where: {
-        alunoId,
-        usuarioId
-      }
-    })
-
-    if (!relacaoExistente) {
-      return res.status(404).json({ erro: "Relação responsável-aluno não encontrada" })
-    }
-
-    await prisma.responsavelAluno.delete({
-      where: {
-        id: relacaoExistente.id
-      }
-    })
-    
-    res.status(200).json({ mensagem: "Responsável removido com sucesso" })
-  } catch (error) {
-    console.error("Erro ao remover responsável do aluno:", error)
-    res.status(500).json({ erro: "Erro ao remover responsável do aluno", detalhes: error })
-  }
-})
-
+// Altera estudante (priorizar uso do patch)
 router.put("/:id", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  const valida = alunoSchema.safeParse(req.body)
-  if (!valida.success) {
-    return res.status(400).json({ erro: valida.error })
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-  try {
-    const id = parseInt(req.params.id)
-    
-    if (isNaN(id)) {
-      return res.status(400).json({ erro: "ID de aluno inválido" })
+        const id = parseInt(req.params.id)
+        if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
+
+        const valida = createStudentSchema.partial().safeParse(req.body)
+        const validaPut = createStudentSchema.safeParse(req.body)
+        if (!validaPut.success) return res.status(400).json({ erro: validaPut.error })
+
+        const service = new StudentService(schoolId)
+        const aluno = await service.update(id, validaPut.data)
+
+        res.status(200).json(aluno)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
     }
-
-    const alunoExistente = await prisma.aluno.findUnique({
-      where: { id }
-    })
-
-    if (!alunoExistente) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
-
-    const aluno = await prisma.aluno.update({
-      where: { id },
-      data: {
-        ...valida.data,
-        dataNasc: new Date(valida.data.dataNasc)
-      }
-    })
-
-    return res.status(200).json(aluno)
-  } catch (error) {
-    console.error("Erro ao atualizar aluno:", error)
-    return res.status(500).json({ erro: "Erro ao atualizar aluno", detalhes: error })
-  }
 })
 
+// Altera estudante (PATCH - parcial)
 router.patch("/:id", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  const valida = alunoPatchSchema.safeParse(req.body)
-  if (!valida.success) {
-    return res.status(400).json({ erro: valida.error })
-  }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
 
-  try {
-    const id = parseInt(req.params.id)
-    
-    if (isNaN(id)) {
-      return res.status(400).json({ erro: "ID de aluno inválido" })
+        const id = parseInt(req.params.id)
+        if (isNaN(id)) return res.status(400).json({ erro: "ID inválido" })
+
+        const valida = updateStudentSchema.safeParse(req.body)
+        if (!valida.success) return res.status(400).json({ erro: valida.error })
+
+        const service = new StudentService(schoolId)
+        const aluno = await service.update(id, valida.data)
+
+        res.status(200).json(aluno)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
     }
-
-    const alunoExistente = await prisma.aluno.findUnique({
-      where: { id }
-    })
-
-    if (!alunoExistente) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
-
-    let dadosAtualizacao: any = { ...valida.data }
-
-    if (valida.data.dataNasc) {
-      dadosAtualizacao.dataNasc = new Date(valida.data.dataNasc)
-    }
-
-    const aluno = await prisma.aluno.update({
-      where: { id },
-      data: dadosAtualizacao
-    })
-
-    return res.status(200).json(aluno)
-  } catch (error) {
-    console.error("Erro ao atualizar aluno parcialmente:", error)
-    return res.status(500).json({ erro: "Erro ao atualizar aluno", detalhes: error })
-  }
 })
 
+// Delete (Soft) Estudante
 router.delete("/soft/:id", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  try {
-    const id = parseInt(req.params.id)
-    
-    if (isNaN(id)) {
-      return res.status(400).json({ erro: "ID de aluno inválido" })
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const id = parseInt(req.params.id)
+
+        const service = new StudentService(schoolId)
+        await service.softDelete(id)
+
+        res.status(200).json({ mensagem: "Aluno desativado com sucesso" })
+    } catch (error: any) {
+         res.status(500).json({ erro: error.message })
     }
-
-    const alunoExistente = await prisma.aluno.findUnique({
-      where: { id }
-    })
-
-    if (!alunoExistente) {
-      return res.status(404).json({ erro: "Aluno não encontrado" })
-    }
-    
-    const aluno = await prisma.aluno.update({
-      where: { id },
-      data: {
-        isAtivo: false
-      }
-    })
-
-    return res.status(200).json({ 
-      mensagem: "Aluno desativado com sucesso",
-      aluno
-    })
-  } catch (error) {
-    console.error("Erro ao desativar aluno:", error)
-    return res.status(500).json({ erro: "Erro ao desativar aluno", detalhes: error })
-  }
 })
 
+// Adiciona Responsável
+router.post("/:usuarioId/responsavel", checkToken, async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const usuarioId = parseInt(req.params.usuarioId)
+        const { alunoId } = req.body
+
+        if (!alunoId) return res.status(400).json({ erro: "ID do aluno é obrigatório" })
+
+        const service = new StudentService(schoolId)
+        const relacao = await service.addResponsavel(alunoId, usuarioId)
+
+        res.status(201).json(relacao)
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
+    }
+})
+
+// Remove Responsável
+router.delete("/:alunoId/responsavel/:usuarioId", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const alunoId = parseInt(req.params.alunoId)
+        const usuarioId = parseInt(req.params.usuarioId)
+
+        const service = new StudentService(schoolId)
+        await service.removeResponsavel(alunoId, usuarioId)
+
+        res.status(200).json({ mensagem: "Responsável removido com sucesso" })
+    } catch (error: any) {
+        res.status(400).json({ erro: error.message })
+    }
+})
+
+// Gera relatório de mensalidades por turma
 router.get("/relatorios/mensalidades-por-turma", checkToken, checkRoles([TIPO_USUARIO.ADMIN]), async (req, res) => {
-  try {
-    const turmasComMensalidades = await prisma.turma.findMany({
-      include: {
-        alunos: {
-          where: {
-            isAtivo: true
-          },
-          select: {
-            id: true,
-            nome: true,
-            mensalidade: true
-          }
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+        
+        const service = new StudentService(schoolId)
+        const report = await service.getReportsByClass()
+
+        res.status(200).json(report)
+    } catch (error: any) {
+        res.status(500).json({ erro: "Erro ao gerar relatório" })
+    }
+})
+
+// Verifica se aluno possui registro de diário em uma data específica
+router.get("/:alunoId/possui-registro-diario", checkToken, async (req, res) => {
+    try {
+        const schoolId = req.schoolId
+        if (!schoolId) return res.status(400).json({ error: "Contexto da escola não identificado" })
+
+        const alunoId = parseInt(req.params.alunoId)
+        if (isNaN(alunoId)) return res.status(400).json({ erro: "ID de aluno inválido" })
+
+        const service = new StudentService(schoolId)
+        const aluno = await service.findById(alunoId)
+        if (!aluno) return res.status(404).json({ erro: "Aluno não encontrado" })
+
+        const dataConsulta = req.query.data ? req.query.data.toString() : new Date().toISOString()
+        const dataFormatada = normalizarData(dataConsulta)
+        const dataInicio = new Date(`${dataFormatada}T00:00:00.000Z`)
+        const dataFim = new Date(`${dataFormatada}T23:59:59.999Z`)
+
+        const diario = await prisma.diario.findFirst({
+        where: { 
+            alunoId,
+            schoolId, // Filtra para garantir multi-tenancy
+            data: {
+            gte: dataInicio,
+            lte: dataFim
+            }
         }
-      }
-    })
+        })
 
-    const resultado = turmasComMensalidades.map(turma => {
-      const totalMensalidade = turma.alunos.reduce((total, aluno) => {
-        return total + (aluno.mensalidade || 0)
-      }, 0)
+        res.status(200).json({ 
+            alunoId, 
+            data: dataFormatada,
+            temDiario: !!diario,
+            diario: diario ? { id: diario.id } : null
+        })
 
-      return {
-        turmaId: turma.id,
-        turmaNome: turma.nome,
-        quantidadeAlunos: turma.alunos.length,
-        totalMensalidade,
-        alunos: turma.alunos
-      }
-    })
-
-    const totalGeral = resultado.reduce((total, turma) => total + turma.totalMensalidade, 0)
-
-    res.status(200).json({
-      turmas: resultado,
-      totalGeral
-    })
-  } catch (error) {
-    console.error("Erro ao buscar mensalidades por turma:", error)
-    res.status(500).json({ erro: "Erro ao buscar mensalidades por turma", detalhes: error })
-  }
+    } catch (error) {
+        console.error("Erro ao verificar diário:", error)
+        res.status(400).json({ erro: "Erro ao verificar diário", detalhes: error })
+    }
 })
 
 export default router

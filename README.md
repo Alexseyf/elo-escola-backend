@@ -1,84 +1,100 @@
-# Escola API
+# Elo API - Plataforma Escolar SaaS
 
-## Sobre o Projeto
-API para gerenciamento de escola de educação infantil, desenvolvida como parte do Projeto Integrador do 4º semestre.
+## 🌟 Sobre o Projeto
+API robusta e escalável desenvolvida para uma **Plataforma de Gestão Escolar Multi-tenant (SaaS)**. O sistema permite que múltiplas escolas utilizem a mesma infraestrutura de forma isolada e segura, oferecendo ferramentas completas para a administração pedagógica e acadêmica.
 
-Esta API fornece funcionalidades para gerenciar:
-- Usuários (administradores, professores, responsáveis)
-- Alunos e suas mensalidades
-- Turmas
-- Diários de classe
-- Cronogramas e eventos
-- Autenticação e controle de acesso
+A API adota uma arquitetura modular e utiliza **controle de tenância via Header (`x-tenant-id`) ou Subdomínio**, garantindo que os dados de cada escola permaneçam estritamente segregados.
 
-## Tecnologias Utilizadas
-- Node.js
-- TypeScript
-- Express.js
-- Prisma ORM
+---
+
+## 🚀 Principais Funcionalidades
+
+### 🏢 Arquitetura Multi-Tenant
+- **Isolamento de Dados:** Contexto definido automaticamente por requisição.
+- **Gestão de Plataforma:** Módulo exclusivo para administradores da plataforma (super-admins) gerenciarem escolas e métricas globais.
+
+### 📚 Módulos Acadêmicos
+- **Gestão de Alunos:** Cadastros completos, vínculo com responsáveis e relatórios.
+- **Turmas:** Organização de classes, vínculo de professores e alunos.
+- **Diários de Classe:** Registro de atividades diárias, observações e ocorrências.
+- **Cronogramas e Eventos:** Calendário escolar e rotinas das turmas.
+- **Atividades Pedagógicas:** Planejamento alinhado aos **Objetivos de Aprendizagem e Desenvolvimento (BNCC)**.
+- **Campos de Experiência:** Estrutura curricular baseada na BNCC.
+
+### 👥 Gestão de Usuários e Acesso
+- **Autenticação:** JWT (JSON Web Token) com expiração segura.
+- **Controle de Acesso (RBAC):** Perfis distintos para `PLATFORM_ADMIN`, `ADMIN`, `PROFESSOR` e `RESPONSAVEL`.
+- **Soft Delete:** Preservação de histórico com desativação lógica de registros.
+
+---
+
+## 🛠️ Tecnologias Utilizadas
+- **Runtime:** Node.js
+- **Linguagem:** TypeScript
+- **Framework:** Express.js
+- **Banco de Dados:** PostgreSQL (via Prisma ORM)
+- **Documentação:** Swagger / OpenAPI 3.0
+- **Segurança:** Bcrypt, JWT, CORS
+- **Utilitários:** Zod (Validação), Nodemailer (E-mails)
+
+---
+
+## ⚙️ Configuração e Instalação
+
+### Pré-requisitos
+- Node.js (v16+)
 - PostgreSQL
-- JSON Web Token (JWT)
-- Bcrypt (criptografia de senhas)
-- Swagger (documentação da API)
-- Nodemailer (envio de e-mails)
+- Gerenciador de pacotes (npm ou yarn)
 
-## Requisitos
-- Node.js (versão 16 ou superior)
-- PostgreSQL
-- npm ou yarn
-
-## Configuração
-
-### 1. Clone o repositório
+### 1. Instalação
 ```bash
-git clone https://github.com/seu-usuario/escola_api.git
-cd escola_api
-```
-
-### 2. Instale as dependências
-```bash
+# Instale as dependências
 npm install
-# ou
-yarn install
 ```
 
-### 3. Configure as variáveis de ambiente
-Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
+### 2. Configuração de Ambiente
+Crie um arquivo `.env` na raiz do projeto configurando as variáveis necessárias (consulte `.env.example`):
 
-```
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/nome_do_banco"
-JWT_SECRET="sua_chave_secreta"
-EMAIL_USER="seu_email@exemplo.com"
-EMAIL_PASS="sua_senha_de_email"
-EMAIL_HOST="smtp.exemplo.com"
-EMAIL_PORT=587
-FRONTEND_URL="http://localhost:5173"
+```env
+DATABASE_URL="postgresql://usuario:senha@localhost:5432/elo_db"
+JWT_KEY="sua_chave_secreta_jwt"
+ALLOWED_ORIGINS="http://localhost:3000,https://seuapp.com"
 ```
 
-### 4. Configure o banco de dados
+### 3. Banco de Dados
+Execute as migrações para criar as tabelas no banco de dados:
 ```bash
 npx prisma migrate dev
 ```
 
-### 5. Inicie o servidor em modo de desenvolvimento
+### 4. Execução
 ```bash
+# Modo de Desenvolvimento
 npm run dev
-# ou
-yarn dev
+
+# Modo de Produção
+npm run build
+npm start
 ```
 
-O servidor estará disponível em: http://localhost:3000
+---
 
-## Documentação da API
-Acesse a documentação Swagger em: http://localhost:3000/api-docs
+## 📖 Documentação da API
+A API possui documentação completa e interativa via Swagger.
 
-## Scripts Disponíveis
-- `npm run build` - Gera os arquivos de produção
-- `npm run start` - Inicia o servidor em modo de produção
-- `npm run dev` - Inicia o servidor em modo de desenvolvimento com recarga automática
+- **Local:** `http://localhost:3000/api-docs`
+- **Produção:** Disponível na rota `/api-docs` do domínio implantado.
 
-## Implantação
-Este projeto está configurado para implantação na Vercel. Utilize o comando:
-```bash
-npm run vercel-build
-```
+> **Nota:** Para testar endpoints protegidos no Swagger, lembre-se de informar o header `x-tenant-id` com o slug da escola desejada (ex: `escola-modelo`), além do Token Bearer.
+
+---
+
+## 🚀 Implantação
+O projeto está otimizado para deploy na **Vercel** ou containers Docker.
+- Script de build para Vercel: `npm run vercel-build`
+
+---
+
+## 📞 Contato
+**Mantenedor:** Alexandre Seyffert
+**Email:** alexseyf66@gmail.com

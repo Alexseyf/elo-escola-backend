@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.passwordCheck = passwordCheck;
+exports.generateDefaultPassword = generateDefaultPassword;
 function passwordCheck(senha) {
     const errorMessage = [];
     if (senha.length < 8) {
@@ -37,4 +38,13 @@ function passwordCheck(senha) {
         errorMessage.push("Erro! senha deve possuir símbolo(s)");
     }
     return errorMessage;
+}
+function generateDefaultPassword(email) {
+    // Pega a parte do email antes do @
+    // const userPart = email.split('@')[0];
+    // Adiciona um timestamp como sufixo para garantir unicidade e complexidade
+    const timestamp = new Date().getTime().toString().substring(6, 10);
+    // Combina com caracteres especiais para garantir os requisitos de segurança
+    const defaultPassword = `${timestamp}!Esc`;
+    return defaultPassword;
 }

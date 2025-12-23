@@ -40,18 +40,44 @@ router.post("/", async (req, res) => {
 });
 async function enviarEmail(email, nome, code) {
     const transporter = nodemailer_1.default.createTransport({
-        host: "sandbox.smtp.mailtrap.io",
-        port: 587,
+        host: process.env.EMAIL_HOST || "smtp.gmail.com",
+        port: Number(process.env.EMAIL_PORT) || 587,
+        secure: process.env.EMAIL_SECURE === 'true',
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
         },
     });
     const mailOptions = {
-        from: "your-email@example.com",
+        from: `"ELO Escola" <${process.env.EMAIL_FROM || "noreply@eloapp.com"}>`,
         to: email,
-        subject: "Recuperação de senha",
-        text: `${nome}, seu código de verificação é: ${code}`,
+        subject: "ELO Escola - Recuperação de senha",
+        priority: "high",
+        headers: {
+            'X-Priority': '1',
+            'Importance': 'high',
+            'X-MSMail-Priority': 'High',
+            'X-Mailer': 'ELO App System Mailer'
+        },
+        text: `Olá ${nome},
+
+Você solicitou a recuperação de senha para sua conta no ELO Escola.
+
+Seu código de verificação é:
+
+Código: ${code}
+
+Este código é válido por 5 minutos. Se você não solicitou a recuperação de senha, por favor, ignore este email.
+
+Atenciosamente,
+Equipe ELO Escola`,
+        html: `<h2>Olá ${nome},</h2>
+    <p>Você solicitou a recuperação de senha para sua conta no ELO Escola.</p>
+    <p>Seu código de verificação é:</p>
+    <p><strong>Código: ${code}</strong></p>
+    <p><em>Este código é válido por 5 minutos. Se você não solicitou a recuperação de senha, por favor, ignore este email.</em></p>
+    <br>
+    <p>Atenciosamente,<br>Equipe ELO Escola</p>`
     };
     await transporter.sendMail(mailOptions);
 }

@@ -1,3 +1,6 @@
 node_modules
 .env
 migrations
+docs
+seed.ts
+__tests__

@@ -3,14 +3,39 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model School {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(255)
+  slug      String   @unique @db.VarChar(50)
+  active    Boolean  @default(true) 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios      Usuario[]
+  turmas        Turma[]
+  alunos        Aluno[]
+  diarios       Diario[]
+  cronogramas   Cronograma[]
+  eventos       Evento[]
+  atividades             Atividade[]
+  logs                   Log[]
+  periodosSono           PeriodoSono[]
+  diarioItensProvidencia DiarioItemProvidencia[]
+  professoresTurmas      ProfessorTurma[]
+  responsaveisAlunos     ResponsavelAluno[]
+
+  @@map("schools")
 }
 
 model Usuario {
   id                Int                @id @default(autoincrement())
   nome              String             @db.VarChar(60)
-  email             String             @unique @db.VarChar(40)
+  email             String             @db.VarChar(40)
   senha             String             @db.VarChar(60)
   telefone          String             @db.VarChar(20)
   isAtivo           Boolean            @default(true)
@@ -26,7 +51,14 @@ model Usuario {
   cronogramas       Cronograma[]
   eventos           Evento[]
   atividades        Atividade[]
+  
+  // Opcional para PLATFORM_ADMIN
+  schoolId          String?
+  school            School?          @relation(fields: [schoolId], references: [id])
 
+  @@unique([email, schoolId])
+  @@index([schoolId]) // Desempenho para consultas de tenant
+  @@index([schoolId, isAtivo]) // Desempenho para usuários ativos por tenant
   @@map("usuarios")
 }
 
@@ -51,7 +83,7 @@ model UsuarioRole {
 
 model Turma {
   id          Int              @id @default(autoincrement())
-  nome        TURMA            @unique
+  nome        TURMA
   grupoId     Int
   grupo       GrupoPorCampo    @relation(fields: [grupoId], references: [id])
   alunos      Aluno[]
@@ -59,6 +91,11 @@ model Turma {
   eventos     Evento[]
   atividades  Atividade[]
 
+  schoolId    String
+  school      School           @relation(fields: [schoolId], references: [id])
+
+  @@unique([nome, schoolId])
+  @@index([schoolId]) // Desempenho para listar turmas por tenant
   @@map("turmas")
 }
 
@@ -68,8 +105,13 @@ model ProfessorTurma {
   turmaId   Int
   usuario   Usuario @relation(fields: [usuarioId], references: [id])
   turma     Turma   @relation(fields: [turmaId], references: [id])
+  
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id])
 
   @@unique([usuarioId, turmaId])
+  @@index([schoolId, turmaId]) // Desempenho para encontrar professores por turma
+  @@index([schoolId, usuarioId]) // Desempenho para encontrar turmas por professor
   @@map("professores_turmas")
 }
 
@@ -94,11 +136,17 @@ model Aluno {
   turmaId      Int
   diario       Diario[]
   responsaveis ResponsavelAluno[]
+  
+  schoolId     String
+  school       School           @relation(fields: [schoolId], references: [id])
 
+  @@index([schoolId, turmaId]) // Desempenho para listar alunos por turma
+  @@index([schoolId, isAtivo]) // Desempenho para consultas de alunos ativos
   @@map("alunos")
 }
 
 enum TIPO_USUARIO {
+  PLATFORM_ADMIN
   ADMIN
   PROFESSOR
   RESPONSAVEL
@@ -113,7 +161,12 @@ model ResponsavelAluno {
   aluno     Aluno    @relation(fields: [alunoId], references: [id])
   usuario   Usuario  @relation(fields: [usuarioId], references: [id])
 
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+
   @@unique([alunoId, usuarioId])
+  @@index([schoolId, alunoId]) // Desempenho para encontrar responsaveis por aluno
+  @@index([schoolId, usuarioId]) // Desempenho para verificações de acesso
   @@map("responsaveis_alunos")
 }
 
@@ -126,6 +179,11 @@ model Log {
   usuarioId   Int
   usuario     Usuario  @relation(fields: [usuarioId], references: [id])
 
+  // Opcional para PLATFORM_ADMIN
+  schoolId    String?
+  school      School?  @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, createdAt]) // Desempenho para listar logs por tenant
   @@map("logs")
 }
 
@@ -145,8 +203,13 @@ model Diario {
   aluno            Aluno                   @relation(fields: [alunoId], references: [id])
   periodosSono     PeriodoSono[]
   itensProvidencia DiarioItemProvidencia[]
+  
+  schoolId         String
+  school           School                  @relation(fields: [schoolId], references: [id])
 
   @@unique([alunoId, data])
+  @@index([schoolId, alunoId]) // Desempenho para listar diarios por aluno
+  @@index([schoolId, data]) // Desempenho para relatórios por data
   @@map("diarios")
 }
 
@@ -160,6 +223,10 @@ model PeriodoSono {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, diarioId]) // Desempenho para encontrar periodos por diario
   @@map("periodos_sono")
 }
 
@@ -177,8 +244,12 @@ model DiarioItemProvidencia {
   itemProvidenciaId Int
   diario            Diario          @relation(fields: [diarioId], references: [id])
   itemProvidencia   ItemProvidencia @relation(fields: [itemProvidenciaId], references: [id])
+  
+  schoolId          String
+  school            School          @relation(fields: [schoolId], references: [id])
 
   @@unique([diarioId, itemProvidenciaId])
+  @@index([schoolId, diarioId]) // Desempenho para encontrar itens por diario
   @@map("diario_itens_providencia")
 }
 
@@ -256,6 +327,10 @@ model Cronograma {
   criador    Usuario     @relation(fields: [criadorId], references: [id])
   criadorId  Int
 
+  schoolId   String
+  school     School      @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, data]) // Desempenho para listar cronogramas por data
   @@map("cronogramas")
 }
 
@@ -275,6 +350,11 @@ model Evento {
   criador    Usuario     @relation(fields: [criadorId], references: [id])
   criadorId  Int
 
+  schoolId   String
+  school     School      @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, turmaId]) // Desempenho para listar eventos por turma
+  @@index([schoolId, data]) // Desempenho para filtrar por data
   @@map("eventos")
 }
 
@@ -325,5 +405,11 @@ model Atividade {
   turma            Turma             @relation(fields: [turmaId], references: [id])
   objetivo         Objetivo          @relation(fields: [objetivoId], references: [id])
 
+  schoolId         String
+  school           School            @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, turmaId]) // Desempenho para listar atividades por turma
+  @@index([schoolId, professorId]) // Desempenho para encontrar por professor
+  @@index([schoolId, data]) // Desempenho para relatórios por data
   @@map("atividades")
 }

@@ -74,4 +74,63 @@ router.post("/", async (req, res) => {
         codigo: "EMAIL_NAO_ENCONTRADO",
     });
 });
+router.post("/alterar-senha", async (req, res) => {
+    const { userId, senhaAtual, novaSenha } = req.body;
+    if (!userId || !senhaAtual || !novaSenha) {
+        return res.status(400).json({
+            erro: "Todos os campos devem ser informados",
+            codigo: "CAMPOS_OBRIGATORIOS",
+        });
+    }
+    const erros = (0, passwordUtils_1.passwordCheck)(novaSenha);
+    if (erros.length > 0) {
+        return res.status(400).json({
+            erro: erros.join("; "),
+            codigo: "VALIDACAO_SENHA",
+        });
+    }
+    try {
+        const usuario = await prisma.usuario.findUnique({
+            where: { id: userId }
+        });
+        if (!usuario) {
+            return res.status(404).json({
+                erro: "Usuário não encontrado",
+                codigo: "USUARIO_NAO_ENCONTRADO",
+            });
+        }
+        const senhaCorreta = await bcrypt_1.default.compare(senhaAtual, usuario.senha);
+        if (!senhaCorreta) {
+            return res.status(400).json({
+                erro: "Senha atual incorreta",
+                codigo: "SENHA_INCORRETA",
+            });
+        }
+        if (senhaAtual === novaSenha) {
+            return res.status(400).json({
+                erro: "A nova senha deve ser diferente da senha atual",
+                codigo: "SENHA_IGUAL",
+            });
+        }
+        const salt = await bcrypt_1.default.genSalt(10);
+        const hashSenha = await bcrypt_1.default.hash(novaSenha, salt);
+        await prisma.usuario.update({
+            where: { id: userId },
+            data: {
+                senha: hashSenha,
+                senhaAlterada: true
+            }
+        });
+        return res.status(200).json({
+            mensagem: "Senha alterada com sucesso",
+        });
+    }
+    catch (error) {
+        console.error("Erro ao alterar senha:", error);
+        return res.status(500).json({
+            erro: "Erro interno ao processar a solicitação",
+            codigo: "ERRO_INTERNO",
+        });
+    }
+});
 exports.default = router;
