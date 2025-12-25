@@ -15,6 +15,12 @@ model School {
   active    Boolean  @default(true) 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  legalName       String?           @db.VarChar(255)
+  cnpj            String?           @unique @db.VarChar(14)
+  logoUrl         String?
+  primaryColor    String?           @db.VarChar(7)
+  timezone        String            @default("America/Sao_Paulo") @db.VarChar(50)
+  subscriptionPlan SubscriptionPlan @default(BASIC)
 
   usuarios      Usuario[]
   turmas        Turma[]
@@ -30,6 +36,12 @@ model School {
   responsaveisAlunos     ResponsavelAluno[]
 
   @@map("schools")
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PRO
+  PREMIUM
 }
 
 model Usuario {
