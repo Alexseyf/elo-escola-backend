@@ -4,11 +4,13 @@ import bcrypt from 'bcrypt'
 import { generateDefaultPassword } from '../utils/passwordUtils'
 import { enviarEmailSenhaPadrao } from '../utils/emailService'
 
+import { PrismaClient, Prisma } from '@prisma/client'
+
 export class UserService {
-  constructor(private schoolId: string) {}
+  constructor(private schoolId: string, private db: PrismaClient | Prisma.TransactionClient = prisma) {}
 
   async create(data: CreateUserInput) {
-    const existingUser = await prisma.usuario.findUnique({
+    const existingUser = await this.db.usuario.findUnique({
       where: {
         email_schoolId: {
           email: data.email,
@@ -25,7 +27,7 @@ export class UserService {
     const salt = bcrypt.genSaltSync(12)
     const hash = bcrypt.hashSync(passwordRaw, salt)
 
-    const newUser = await prisma.usuario.create({
+    const newUser = await this.db.usuario.create({
       data: {
         nome: data.nome,
         email: data.email,
@@ -55,7 +57,7 @@ export class UserService {
   }
 
   async findAll() {
-    return prisma.usuario.findMany({
+    return this.db.usuario.findMany({
       where: { schoolId: this.schoolId },
       include: {
         roles: {
@@ -66,7 +68,7 @@ export class UserService {
   }
   
   async findById(userId: number) {
-    return prisma.usuario.findFirst({
+    return this.db.usuario.findFirst({
       where: { 
         id: userId,
         schoolId: this.schoolId 
@@ -80,7 +82,7 @@ export class UserService {
   }
 
   async findByEmail(email: string) {
-    return prisma.usuario.findUnique({
+    return this.db.usuario.findUnique({
       where: {
         email_schoolId: {
             email,

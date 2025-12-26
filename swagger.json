@@ -836,7 +836,7 @@
                     "roles": { "type": "array", "items": { "type": "string", "enum": ["ADMIN", "PROFESSOR", "RESPONSAVEL"] } },
                     "schoolId": { "type": "string", "description": "Obrigatório para PLATFORM_ADMIN criando usuário" }
                 },
-                "required": ["nome", "email", "senha", "telefone", "roles"]
+                "required": ["nome", "email", "telefone", "roles"]
             },
             "CreateSchoolInput": {
                 "type": "object",
@@ -854,9 +854,9 @@
                         "properties": {
                             "nome": { "type": "string", "minLength": 3 },
                             "email": { "type": "string", "format": "email" },
-                            "senha": { "type": "string", "minLength": 6 }
+                            "telefone": { "type": "string", "minLength": 10, "maxLength": 20 }
                         },
-                        "required": ["nome", "email", "senha"]
+                        "required": ["nome", "email", "telefone"]
                     }
                 },
                 "required": ["name", "slug", "adminUser"]

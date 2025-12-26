@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { CreateSchoolInput } from './school.schema';
 import { AppError } from '../../shared/errors/AppError';
-import bcrypt from 'bcrypt';
+import { UserService } from '../../../services/userService';
 import { TIPO_USUARIO, SubscriptionPlan } from '@prisma/client';
 
 export class SchoolService {
@@ -15,7 +15,7 @@ export class SchoolService {
       throw new AppError(`School with slug '${data.slug}' already exists`, 409);
     }
     
-    const hashedPassword = await bcrypt.hash(data.adminUser.senha, 10);
+
 
     return prisma.$transaction(async (tx) => {
       const school = await tx.school.create({
@@ -32,26 +32,13 @@ export class SchoolService {
         }
       });
 
-      const adminRole = await tx.role.upsert({
-        where: { tipo: TIPO_USUARIO.ADMIN },
-        update: {},
-        create: { tipo: TIPO_USUARIO.ADMIN }
-      });
-
-      const user = await tx.usuario.create({
-        data: {
-          nome: data.adminUser.nome,
-          email: data.adminUser.email,
-          senha: hashedPassword,
-          telefone: '',
-          schoolId: school.id,
-          isAtivo: true,
-          roles: {
-            create: {
-              roleId: adminRole.id
-            }
-          }
-        }
+      const userService = new UserService(school.id, tx);
+      const user = await userService.create({
+        nome: data.adminUser.nome,
+        email: data.adminUser.email,
+        telefone: data.adminUser.telefone,
+        roles: [TIPO_USUARIO.ADMIN],
+        schoolId: school.id
       });
 
       return {
